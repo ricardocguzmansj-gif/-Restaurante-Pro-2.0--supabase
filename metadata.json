@@ -1,0 +1,7 @@
+{
+  "name": "CRM Restaurante Pro 2.0- supabase",
+  "description": "Una aplicación CRM completa para gestionar pedidos de comida (dine-in, para llevar y delivery) pensada para restaurantes. Permite administrar menús, pedidos, clientes, cupones y un tablero de cocina (GIC).",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

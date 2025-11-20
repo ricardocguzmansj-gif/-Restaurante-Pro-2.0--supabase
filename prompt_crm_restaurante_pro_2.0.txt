@@ -1,0 +1,108 @@
+### **Prompt de Desarrollo: "CRM Restaurante Pro 2.0"**
+
+**1. Título del Proyecto:**
+Desarrollo de "CRM Restaurante Pro 2.0" - Plataforma Integral de Gestión para Restaurantes (Web, iOS, Android).
+
+**2. Visión General y Objetivo del Producto:**
+
+Crear una aplicación de CRM (Customer Relationship Management) y gestión de operaciones de extremo a extremo, diseñada específicamente para el sector de la restauración. La plataforma, "CRM Restaurante Pro 2.0", debe ser una solución robusta, intuitiva y multiplataforma que centralice todas las operaciones clave de un restaurante moderno: gestión de pedidos (en sala, para llevar, delivery), clientes, menú, inventario y análisis de rendimiento.
+
+El objetivo es empoderar a los propietarios y al personal del restaurante con una herramienta que optimice la eficiencia, mejore la experiencia del cliente y facilite la toma de decisiones estratégicas basadas en datos. La aplicación debe contar con una interfaz limpia, moderna, soporte para modo oscuro y ser completamente funcional en cualquier dispositivo.
+
+**Fase Inicial (Prototipo Funcional):** Para la fase inicial, se implementará una API simulada (`mock API`) que utilizará `localStorage` para la persistencia de datos. Esto permitirá un desarrollo ágil y una demostración completa de la funcionalidad sin un backend complejo. La arquitectura debe estar diseñada para permitir una fácil sustitución de esta API simulada por una API real en el futuro.
+
+**3. Stack Tecnológico y Arquitectura:**
+
+*   **Frontend Web:** React con TypeScript.
+*   **Frontend Móvil (iOS/Android):** React Native con TypeScript, compartiendo la máxima lógica de negocio (hooks, servicios de API, tipos) con la versión web.
+*   **Estilos:** Tailwind CSS para un diseño rápido, consistente y responsivo.
+*   **Enrutamiento:** React Router (`react-router-dom`).
+*   **Gestión de Estado:** React Context API para una gestión de estado centralizada y sencilla.
+*   **Visualización de Datos:** Biblioteca `Recharts` para gráficos y reportes.
+*   **Iconografía:** `Lucide React` para un conjunto de iconos limpio y consistente.
+
+---
+
+**4. Módulos y Funcionalidades Detalladas:**
+
+**4.1. Autenticación y Gestión de Roles**
+*   **Inicio de Sesión:** Pantalla de login segura con campos para email y contraseña.
+*   **Roles de Usuario:** El sistema debe soportar 5 roles con permisos específicos:
+    *   **ADMIN:** Acceso total. Gestiona usuarios y configuraciones críticas.
+    *   **GERENTE:** Acceso operativo total. Gestiona todo excepto la configuración avanzada.
+    *   **MOZO/A:** Acceso al Plano del Salón, creación/gestión de pedidos y clientes.
+    *   **COCINA:** Acceso exclusivo al Gestor Integral de Cocina (GIC/KDS).
+    *   **REPARTO:** Acceso a una vista especializada para sus entregas.
+*   **Navegación Dinámica:** La barra de navegación lateral se adaptará para mostrar solo las secciones permitidas para el rol del usuario.
+
+**4.2. Dashboard (Panel Principal)**
+*   **KPIs Clave:** Tarjetas destacadas con métricas del día: Ingresos Totales, N.º de Pedidos, Ticket Promedio.
+*   **Gráficos de Rendimiento:** Un gráfico de barras con el volumen de pedidos de los últimos 7 días.
+*   **Alertas Críticas:** Notificaciones visibles para "Pedidos nuevos en espera" y "Alertas de inventario bajo".
+
+**4.3. Gestión de Pedidos**
+*   **Vista Centralizada:** Tabla de pedidos filtrable (por estado) y con búsqueda inteligente (ID, cliente, teléfono).
+*   **Creación/Edición de Pedidos:** Un modal intuitivo para añadir/editar productos, modificar cantidades, agregar notas, y asignar cliente/mesa. Debe calcular impuestos y totales automáticamente.
+*   **Gestión de Pagos:** Funcionalidad para registrar pagos (Efectivo, Tarjeta, QR), gestionar pagos parciales y dividir la cuenta.
+*   **Gestión de Delivery:**
+    *   **Para Gerentes:** Vista para asignar pedidos listos a repartidores disponibles.
+    *   **Para Repartidores:** Vista simplificada con sus pedidos, detalles del cliente, y opción para actualizar estado ("En Camino", "Entregado"). Uso de **Geolocalización** para simular seguimiento en tiempo real.
+
+**4.4. Plano del Salón**
+*   **Representación Visual Interactiva:** Un lienzo que muestra la disposición de las mesas.
+*   **Estados de Mesa con Código de Color:** `LIBRE` (Verde), `OCUPADA` (Naranja), `NECESITA LIMPIEZA` (Rojo).
+*   **Modo Edición (Admin/Gerente):** Permitir arrastrar y soltar mesas para cambiar su posición, cambiar su forma (cuadrada, rectangular) y añadir nuevas mesas.
+
+**4.5. Gestor Integral de Cocina (GIC / KDS)**
+*   **Vista Kanban:** Columnas para `NUEVO`, `EN PREPARACIÓN`, `LISTO`.
+*   **Tarjetas de Pedido:** Cada tarjeta debe mostrar ID, tipo de pedido, lista de productos con notas, y tiempo transcurrido.
+*   **Funcionalidad Drag-and-Drop:** Arrastrar tarjetas para actualizar el estado del pedido.
+*   **Notificaciones Sonoras:** Reproducir un sonido cuando un pedido pasa a `LISTO`.
+
+**4.6. Gestión de Menú e Inventario**
+*   **Menú:** CRUD completo para categorías y productos. El formulario de producto debe incluir nombre, descripción, precio, imagen (URL), receta (vinculada a inventario), y disponibilidad.
+*   **Inventario:** CRUD para ingredientes (nombre, unidad, stock actual/mínimo, costo). El sistema debe calcular el stock de productos finales y generar alertas.
+
+**4.7. Gestión de Clientes (CRM) y Cupones**
+*   **Clientes:** Base de datos de clientes con historial de pedidos, LTV y datos de contacto. Incluir un estado "Verificado" para habilitar el delivery.
+*   **Cupones:** CRUD para crear cupones (código, tipo: % o fijo, valor, expiración, etc.).
+
+**4.8. Analítica y Reportes**
+*   **Panel de Reportes:** Con filtros por fecha y canal.
+*   **Pestañas de Reportes:** General, Productos (más vendidos/rentables), Ventas por Hora, y Rendimiento del Personal.
+*   **Exportación:** Permitir exportar los datos a CSV y JSON, y una opción para imprimir.
+
+**4.9. Configuración**
+*   Pestañas para: Gestión de Usuarios, Datos del Restaurante, Impuestos y Propinas, y una zona para Restablecer Datos (para la demo).
+
+**4.10. Portal del Cliente (Público)**
+*   **Interfaz Sencilla:** Una página web pública sin necesidad de login para que los clientes hagan pedidos.
+*   **Menú Visual:** El menú del restaurante, navegable por categorías.
+*   **Carrito de Compras y Checkout:**
+    *   Un proceso de checkout claro para pedidos `PARA LLEVAR` o `DELIVERY`.
+    *   Solicitar datos básicos (nombre, teléfono, dirección).
+    *   **Verificación por Teléfono:** Simular una verificación con un código estático (ej: '1234') para validar al cliente y habilitar el delivery.
+*   **Confirmación de Pedido:** Página de éxito con el número de pedido.
+
+---
+
+**5. Consideraciones de UI/UX y Diseño:**
+
+*   **Diseño Limpio y Moderno:** Utilizar espacios en blanco, tipografía clara y una paleta de colores profesional. El naranja `(#f97316)` debe ser el color de acento principal.
+*   **Modo Oscuro:** La aplicación debe ser completamente funcional y estéticamente agradable tanto en modo claro como oscuro.
+*   **Responsividad Total:** Garantizar una experiencia de usuario perfecta en dispositivos de escritorio, tablets y móviles.
+*   **Feedback al Usuario:** Usar notificaciones (toasts) para confirmar acciones y mostrar indicadores de carga para operaciones asíncronas.
+*   **Accesibilidad (A11Y):** Utilizar HTML semántico, atributos ARIA y asegurar un buen contraste de color.
+
+**6. Estructura de Datos (Modelos Principales):**
+
+*   Se deben definir interfaces de TypeScript claras para todas las entidades principales, como `User`, `Order`, `MenuItem`, `Customer`, `Coupon`, `Ingredient`, `Table`, etc. La estructura debe ser modular y escalable.
+
+**7. Requisitos para Plataformas Móviles (Android/iOS):**
+
+*   **Acceso a APIs Nativas:** La app móvil deberá solicitar permisos para:
+    *   **Geolocalización:** Para que los repartidores puedan (simular) compartir su ubicación.
+*   **Experiencia de Usuario Nativa:** Aunque se use React Native, la navegación y los componentes deben sentirse nativos para cada plataforma.
+*   **Funcionalidad Offline (Opcional, Fase 2):** Considerar un modo offline básico que sincronice los datos cuando se recupere la conexión.
+
+---
