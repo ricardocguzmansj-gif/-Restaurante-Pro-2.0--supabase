@@ -1,12 +1,99 @@
+
 import React, { useState } from 'react';
-import { Pizza, Loader2 } from 'lucide-react';
+import { Pizza, Loader2, Eye, EyeOff, X, Mail, ArrowRight, CheckCircle } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
+
+const ForgotPasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const { showToast } = useAppContext();
+    const [email, setEmail] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSent, setIsSent] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!email) return;
+        
+        setIsLoading(true);
+        // Simulación de llamada a API
+        setTimeout(() => {
+            setIsLoading(false);
+            setIsSent(true);
+            showToast("Si el correo existe, recibirás las instrucciones en breve.");
+        }, 1500);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 relative" onClick={(e) => e.stopPropagation()}>
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X className="h-5 w-5" />
+                </button>
+
+                {!isSent ? (
+                    <>
+                        <div className="mb-6 text-center">
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 dark:bg-orange-900/30 mb-4">
+                                <Mail className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 dark:text-white">Recuperar Contraseña</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                                Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu acceso.
+                            </p>
+                        </div>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Email registrado
+                                </label>
+                                <input
+                                    type="email"
+                                    id="reset-email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    placeholder="ejemplo@restaurante.com"
+                                    required
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isLoading}
+                                className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50"
+                            >
+                                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ArrowRight className="h-4 w-4 mr-2" />}
+                                {isLoading ? 'Enviando...' : 'Enviar enlace de recuperación'}
+                            </button>
+                        </form>
+                    </>
+                ) : (
+                    <div className="text-center py-4">
+                        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30 mb-4 animate-bounce">
+                            <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">¡Correo enviado!</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 mb-6">
+                            Revisa tu bandeja de entrada (y spam) para continuar con el proceso.
+                        </p>
+                        <button
+                            onClick={onClose}
+                            className="w-full py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
+                            Volver al inicio de sesión
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 export const LoginPage: React.FC = () => {
   const { login } = useAppContext();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,19 +148,26 @@ export const LoginPage: React.FC = () => {
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Contraseña
             </label>
-            <div className="mt-1">
+            <div className="mt-1 relative">
               <input
                 id="password"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={inputClasses}
+                className={`${inputClasses} pr-10`}
                 placeholder="••••••••"
                 disabled={isLoading}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
@@ -86,9 +180,13 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <div className="text-sm">
-              <a href="#" className="font-medium text-orange-600 hover:text-orange-500">
+              <button 
+                type="button" 
+                onClick={() => setIsForgotModalOpen(true)}
+                className="font-medium text-orange-600 hover:text-orange-500 hover:underline"
+              >
                 ¿Olvidaste tu contraseña?
-              </a>
+              </button>
             </div>
           </div>
 
@@ -110,6 +208,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </form>
       </div>
+      {isForgotModalOpen && <ForgotPasswordModal onClose={() => setIsForgotModalOpen(false)} />}
     </div>
   );
 };

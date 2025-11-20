@@ -1124,14 +1124,8 @@ export const OrdersPage: React.FC = () => {
     const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
     const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
     
-    // Initialize filter: ALL for Admins, UserID for Mozos (default to "My Orders")
+    // Initialize filter: ALL for Admins. 
     const [mozoFilter, setMozoFilter] = useState<string>('ALL');
-    
-    useEffect(() => {
-         if (user?.rol === UserRole.MOZO) {
-            setMozoFilter(user.id);
-         }
-    }, [user]);
 
     const ITEMS_PER_PAGE = 15;
 
@@ -1405,14 +1399,13 @@ export const OrdersPage: React.FC = () => {
 
         // Filter by Mozo logic
         let matchesMozo = true;
-        if (mozoFilter !== 'ALL') {
-            if (user?.rol === UserRole.MOZO && mozoFilter === user.id) {
-                // For Mozo's "My Orders", include orders assigned OR created by them
-                matchesMozo = order.mozo_id === user.id || order.creado_por_id === user.id;
-            } else {
-                // For strict filtering (Admin dropdown), check assigned mozo
-                matchesMozo = order.mozo_id === mozoFilter;
-            }
+        
+        if (user?.rol === UserRole.MOZO) {
+            // STRICT: Mozo sees only orders they created OR are assigned to.
+            matchesMozo = order.mozo_id === user.id || order.creado_por_id === user.id;
+        } else if (mozoFilter !== 'ALL') {
+             // Admin Filter logic
+             matchesMozo = order.mozo_id === mozoFilter;
         }
 
         // Filter by Date
@@ -1666,7 +1659,7 @@ export const OrdersPage: React.FC = () => {
                             </select>
                         </div>
 
-                        {/* FILTRO POR MOZO */}
+                        {/* FILTRO POR MOZO (Solo Admin/Gerente) */}
                         {[UserRole.ADMIN, UserRole.GERENTE].includes(user?.rol as UserRole) && (
                             <div>
                                 <div className="relative">
@@ -1684,20 +1677,14 @@ export const OrdersPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
-
+                        
+                        {/* INDICADOR PARA MOZO (Sin opción de cambiar) */}
                         {user?.rol === UserRole.MOZO && (
                             <div className="flex items-center">
-                                <button 
-                                    onClick={() => setMozoFilter(prev => prev === 'ALL' ? user.id : 'ALL')}
-                                    className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors border ${
-                                        mozoFilter !== 'ALL'
-                                        ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
-                                        : 'bg-white text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                    }`}
-                                >
+                                <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
                                     <UserCheck className="h-4 w-4" />
-                                    {mozoFilter !== 'ALL' ? 'Solo mis pedidos' : 'Ver todos los pedidos'}
-                                </button>
+                                    <span>Mis Pedidos</span>
+                                </div>
                             </div>
                         )}
                     </div>

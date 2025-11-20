@@ -27,8 +27,20 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: UserRo
   }
 
   if (!allowedRoles.includes(user.rol)) {
-    // Redirect Super Admin to their specific dashboard if they try to access unauthorized regular routes
-    if (user.rol === UserRole.SUPER_ADMIN) return <Navigate to="/super-admin" replace />;
+    // Special handling: If Super Admin tries to access a regular route but has access (is managing a restaurant), allow it.
+    // The allowedRoles check above handles strict role restriction. 
+    // If user IS Super Admin, they generally have access to everything in the AdminApp context EXCEPT when specifically restricted.
+    // However, if they are just landing, we want to be careful.
+    
+    if (user.rol === UserRole.SUPER_ADMIN) {
+        // If Super Admin is trying to access /super-admin, allow (it's in allowedRoles usually)
+        // If Super Admin is trying to access /dashboard, allow (it's in allowedRoles)
+        // This block runs if allowedRoles DOES NOT include SUPER_ADMIN, which shouldn't happen for the main routes 
+        // as we added SUPER_ADMIN to them in constants/App.
+        
+        // Fallback: Redirect to super admin dashboard
+        return <Navigate to="/super-admin" replace />;
+    }
     
     const fallbackUrl = NAVIGATION_ITEMS.find(item => item.roles.includes(user.rol))?.href || '/';
     return <Navigate to={fallbackUrl} replace />;
@@ -44,12 +56,10 @@ const AdminApp: React.FC = () => {
     return <LoginPage />;
   }
   
-  // Redirect Super Admin to their dashboard on root load
-  if (user.rol === UserRole.SUPER_ADMIN && window.location.hash === '#/') {
-      return <Navigate to="/super-admin" replace />;
-  }
-  
-  const userHomePage = NAVIGATION_ITEMS.find(item => item.roles.includes(user.rol))?.href || '/';
+  // Determine the correct homepage based on role
+  const userHomePage = user.rol === UserRole.SUPER_ADMIN 
+      ? '/super-admin' 
+      : (NAVIGATION_ITEMS.find(item => item.roles.includes(user.rol))?.href || '/dashboard');
 
   return (
     <Routes>
