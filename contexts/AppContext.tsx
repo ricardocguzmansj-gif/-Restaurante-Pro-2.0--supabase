@@ -11,6 +11,7 @@ interface AppContextType {
   users: User[];
   login: (email: string, password_provided: string) => Promise<void>;
   logout: () => void;
+  recoverPassword: (email: string) => Promise<string>;
   currentRestaurantId: string | null;
   switchRestaurant: (restaurantId: string) => Promise<void>;
   restaurants: Restaurant[];
@@ -270,6 +271,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.error(e);
         showToast("Error de conexión al iniciar sesión", "error");
     }
+  };
+
+  const recoverPassword = async (email: string): Promise<string> => {
+      return await api.recoverPassword(email);
   };
 
   const logout = () => {
@@ -533,7 +538,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateUserLocation = async (id: string, lat: number, lng: number) => { await api.updateUserLocation(id, lat, lng); };
 
   const value = {
-    user, users, login, logout, currentRestaurantId, switchRestaurant, restaurants, orders, tables, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,
+    user, users, login, logout, recoverPassword, currentRestaurantId, switchRestaurant, restaurants, orders, tables, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,
     updateOrderStatus, cancelOrder, createOrder, createPublicOrder, createCustomer, updateCustomer, deleteCustomer, findCustomerByContact, verifyCustomer, updateOrder, assignRepartidor, assignMozoToOrder, showToast, createCoupon, updateCoupon, deleteCoupon, generatePaymentQR, addPaymentToOrder,
     createUser, updateUser, deleteUser, createMenuItem, updateMenuItem, deleteMenuItem, restoreMenuItem, updateCategories, createCategory, deleteCategory, updateRestaurantSettings, cleanTable, saveTableLayout, updateTable, createIngredient, updateIngredient, deleteIngredient, createRestaurant, deleteRestaurant, updateUserLocation,
     isOnline

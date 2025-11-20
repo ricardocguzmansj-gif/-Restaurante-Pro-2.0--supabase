@@ -165,6 +165,49 @@ export const api = {
     return undefined;
   },
 
+  recoverPassword: async (email: string): Promise<string> => {
+      // Generate a random temporary password
+      const tempPassword = Math.random().toString(36).slice(-8).toUpperCase();
+      
+      if (isSupabaseConfigured() && supabase) {
+          // 1. Check if user exists
+          const { data: user, error: findError } = await supabase
+              .from('app_users')
+              .select('id')
+              .ilike('email', email)
+              .eq('is_deleted', false)
+              .single();
+
+          if (findError || !user) {
+              throw new Error("No se encontró un usuario con ese correo electrónico.");
+          }
+
+          // 2. Update password in DB
+          const { error: updateError } = await supabase
+              .from('app_users')
+              .update({ password: tempPassword })
+              .eq('id', user.id);
+
+          if (updateError) {
+              throw new Error("Error al actualizar la contraseña. Inténtelo de nuevo.");
+          }
+          
+          // In a real scenario, we would trigger an email here.
+          // For this app, we return it to be displayed in UI.
+          return tempPassword;
+      }
+
+      await simulateDelay(500);
+      const userIndex = localUsers.findIndex(u => u.email.toLowerCase() === email.toLowerCase() && !u.is_deleted);
+      if (userIndex === -1) {
+           throw new Error("No se encontró un usuario con ese correo electrónico.");
+      }
+      
+      localUsers[userIndex].password = tempPassword;
+      saveLocal();
+      return tempPassword;
+  },
+
   getUsers: async (restaurantId: string): Promise<User[]> => {
     if (isSupabaseConfigured() && supabase) {
         const { data, error } = await supabase
