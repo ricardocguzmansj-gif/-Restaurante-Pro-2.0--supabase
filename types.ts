@@ -18,6 +18,7 @@ export interface User {
   estado_delivery?: 'DISPONIBLE' | 'EN_REPARTO';
   is_deleted?: boolean;
   password?: string;
+  must_change_password?: boolean;
   last_location?: {
     lat: number;
     lng: number;

@@ -160,7 +160,7 @@ export const api = {
     const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && !u.is_deleted);
     if (user && (user.password === password_provided || !user.password)) {
         const { password, ...userWithoutPassword } = user;
-        return userWithoutPassword as User;
+        return { ...userWithoutPassword, password } as User; // Return pass to check change req in app
     }
     return undefined;
   },
@@ -182,10 +182,13 @@ export const api = {
               throw new Error("No se encontró un usuario con ese correo electrónico.");
           }
 
-          // 2. Update password in DB
+          // 2. Update password in DB and set flag
           const { error: updateError } = await supabase
               .from('app_users')
-              .update({ password: tempPassword })
+              .update({ 
+                  password: tempPassword,
+                  must_change_password: true 
+              })
               .eq('id', user.id);
 
           if (updateError) {
@@ -204,6 +207,7 @@ export const api = {
       }
       
       localUsers[userIndex].password = tempPassword;
+      localUsers[userIndex].must_change_password = true;
       saveLocal();
       return tempPassword;
   },
@@ -231,7 +235,8 @@ export const api = {
              id: newId,
              avatar_url: `https://i.pravatar.cc/150?u=${newId}`,
              is_deleted: false,
-             password: 'password' // Default for new users in this system
+             password: 'password', // Default for new users in this system
+             must_change_password: true // Force change for new users
          };
          const { data, error } = await supabase.from('app_users').insert(userPayload).select().single();
          if (error) throw error;
@@ -245,7 +250,8 @@ export const api = {
       id: newId,
       avatar_url: `https://i.pravatar.cc/150?u=${newId}`,
       is_deleted: false,
-      password: 'password'
+      password: 'password',
+      must_change_password: true
     };
     localUsers = [newUser, ...localUsers];
     saveLocal();

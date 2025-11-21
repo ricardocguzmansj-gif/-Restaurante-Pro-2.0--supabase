@@ -4,9 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
 import { User, UserRole, RestaurantSettings } from '../types';
-import { PlusCircle, X, Trash2, AlertTriangle, Database, Loader2, CheckCircle, Key, Eye, EyeOff } from 'lucide-react';
+import { PlusCircle, X, Trash2, AlertTriangle, Database, Loader2, CheckCircle, Key, Eye, EyeOff, FileCode, Copy, ChevronDown, ChevronUp } from 'lucide-react';
 import { migrateToSupabase } from '../services/supabaseMigration';
-import { isSupabaseConfigured } from '../services/supabase';
+import { isSupabaseConfigured, DEFAULT_SUPABASE_URL } from '../services/supabase';
 
 
 const UserModal: React.FC<{
@@ -81,9 +81,14 @@ const UserModal: React.FC<{
         // Only update password if entered
         if (formData.password) {
             dataToSave.password = formData.password;
+            // If user is being edited and password changed, reset the must_change flag locally to false (as admin set it)
+            // or keep it true? Usually admin sets it to something known and user changes it.
+            // For simplicity here, we assume admin setting it makes it valid.
+            dataToSave.must_change_password = false;
         } else if (!userToEdit) {
              // Default password for new users if not provided
              dataToSave.password = 'password';
+             dataToSave.must_change_password = true;
         }
 
         if (userToEdit) {
@@ -210,11 +215,8 @@ const UserManagementTab: React.FC = () => {
         setIsModalOpen(false);
     };
     
-    // Filter out SUPER_ADMIN from the list. The Super Admin manages themselves in the Super Admin Dashboard.
-    // Even if the currently logged-in user IS the super admin, they shouldn't see themselves in the restaurant's employee list here.
     const displayUsers = users.filter(u => u.rol !== UserRole.SUPER_ADMIN);
 
-    // Ensure current user is visible in the list if they are logged in AND not super admin
     if (user && user.rol !== UserRole.SUPER_ADMIN && !displayUsers.find(u => u.id === user.id)) {
         displayUsers.unshift(user);
     }
@@ -316,13 +318,193 @@ const TaxesAndTipsTab: React.FC = () => {
     );
 };
 
+const SUPABASE_SCHEMA_SQL = `
+-- CREACIÓN DE TABLAS Y RELACIONES PARA RESTAURANTE PRO 2.0
+-- Copia y pega este script en el 'SQL Editor' de tu proyecto Supabase.
+
+-- 1. Restaurantes
+create table if not exists restaurants (
+  id text primary key,
+  settings jsonb not null default '{}'::jsonb,
+  created_at timestamp with time zone default now()
+);
+
+-- 2. Usuarios de la Aplicación (Sistema Propio)
+create table if not exists app_users (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  nombre text not null,
+  email text not null,
+  rol text not null,
+  avatar_url text,
+  password text, -- En producción real, usar auth.users o hashear
+  estado_delivery text default 'DISPONIBLE',
+  is_deleted boolean default false,
+  must_change_password boolean default false,
+  last_location jsonb,
+  created_at timestamp with time zone default now()
+);
+
+-- 3. Categorías del Menú
+create table if not exists categories (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  nombre text not null,
+  orden integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+-- 4. Ingredientes (Inventario)
+create table if not exists ingredients (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  nombre text not null,
+  unidad text not null,
+  stock_actual numeric default 0,
+  stock_minimo numeric default 0,
+  coste_unitario numeric default 0,
+  categoria text default 'GENERAL',
+  created_at timestamp with time zone default now()
+);
+
+-- 5. Ítems del Menú
+create table if not exists menu_items (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  category_id text references categories(id) on delete set null,
+  nombre text not null,
+  descripcion text,
+  precio_base numeric default 0,
+  coste numeric default 0,
+  receta jsonb default '[]'::jsonb, -- Array de {ingredient_id, cantidad}
+  img_url text,
+  etiquetas text[],
+  disponible boolean default true,
+  tiempo_preparacion_min integer default 0,
+  stock_actual numeric,
+  permite_venta_sin_stock boolean default false,
+  is_deleted boolean default false,
+  created_at timestamp with time zone default now()
+);
+
+-- 6. Clientes (CRM)
+create table if not exists customers (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  nombre text not null,
+  telefono text,
+  email text,
+  ltv numeric default 0,
+  ultima_compra timestamp with time zone,
+  frecuencia_promedio_dias numeric default 0,
+  is_verified boolean default false,
+  direccion jsonb default '{}'::jsonb,
+  is_deleted boolean default false,
+  created_at timestamp with time zone default now()
+);
+
+-- 7. Mesas
+create table if not exists tables (
+  id text primary key, -- Composite ID string (restId_tableId)
+  table_number integer,
+  restaurant_id text references restaurants(id) on delete cascade,
+  nombre text,
+  estado text default 'LIBRE',
+  x integer default 0,
+  y integer default 0,
+  shape text default 'square',
+  order_id integer, -- Referencia suelta para estado rápido
+  mozo_id text,
+  created_at timestamp with time zone default now()
+);
+
+-- 8. Pedidos
+create table if not exists orders (
+  id bigint generated by default as identity primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  customer_id text references customers(id) on delete set null,
+  table_id integer,
+  creado_por_id text, -- Referencia a app_users.id
+  repartidor_id text, -- Referencia a app_users.id
+  mozo_id text,       -- Referencia a app_users.id
+  tipo text not null,
+  estado text not null,
+  subtotal numeric default 0,
+  descuento numeric default 0,
+  impuestos numeric default 0,
+  propina numeric default 0,
+  total numeric default 0,
+  items jsonb default '[]'::jsonb,
+  payments jsonb default '[]'::jsonb,
+  creado_en text, -- ISO String guardado como texto para compatibilidad simple
+  created_at timestamp with time zone default now()
+);
+
+-- 9. Cupones
+create table if not exists coupons (
+  id text primary key,
+  restaurant_id text references restaurants(id) on delete cascade,
+  codigo text not null,
+  tipo text not null,
+  valor numeric default 0,
+  activo boolean default true,
+  expira_en text,
+  minimo_subtotal numeric,
+  created_at timestamp with time zone default now()
+);
+
+-- Índices para optimizar búsquedas comunes
+create index if not exists idx_orders_restaurant on orders(restaurant_id);
+create index if not exists idx_orders_customer on orders(customer_id);
+create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id);
+create index if not exists idx_app_users_email on app_users(email);
+
+-- 10. SEGURIDAD (Row Level Security - RLS)
+-- Habilita RLS para proteger los datos.
+-- NOTA: Dado que esta App usa un sistema de usuarios propio (tabla app_users) y no
+-- Supabase Auth nativo para la sesión, estas políticas son PERMISIVAS para permitir
+-- que la API Key funcione. En producción real, se recomienda integrar Supabase Auth.
+
+alter table restaurants enable row level security;
+alter table app_users enable row level security;
+alter table categories enable row level security;
+alter table ingredients enable row level security;
+alter table menu_items enable row level security;
+alter table customers enable row level security;
+alter table tables enable row level security;
+alter table orders enable row level security;
+alter table coupons enable row level security;
+
+-- Políticas de Lectura Pública (Para el Portal de Clientes y Menú Digital)
+create policy "Public Read Restaurants" on restaurants for select using (true);
+create policy "Public Read Categories" on categories for select using (true);
+create policy "Public Read Menu Items" on menu_items for select using (true);
+
+-- Políticas de Escritura Pública (Para que clientes creen pedidos)
+create policy "Public Create Customers" on customers for insert with check (true);
+create policy "Public Create Orders" on orders for insert with check (true);
+
+-- Políticas de Acceso General (Permite funcionamiento del Dashboard con la API Key)
+-- En una implementación estricta, aquí se usaría: using (auth.uid() IS NOT NULL)
+create policy "Enable All Access for App Logic" on restaurants for all using (true);
+create policy "Enable All Access for Users" on app_users for all using (true);
+create policy "Enable All Access for Categories" on categories for all using (true);
+create policy "Enable All Access for Ingredients" on ingredients for all using (true);
+create policy "Enable All Access for Menu" on menu_items for all using (true);
+create policy "Enable All Access for Customers" on customers for all using (true);
+create policy "Enable All Access for Tables" on tables for all using (true);
+create policy "Enable All Access for Orders" on orders for all using (true);
+create policy "Enable All Access for Coupons" on coupons for all using (true);
+`;
+
 export const AdvancedSettingsTab: React.FC = () => {
     const { showToast } = useAppContext();
-    const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('supabase_url') || '');
+    const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL);
     const [supabaseKey, setSupabaseKey] = useState(localStorage.getItem('supabase_key') || '');
     const [migrationStatus, setMigrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [migrationLog, setMigrationLog] = useState<string[]>([]);
     const [isConfigured, setIsConfigured] = useState(isSupabaseConfigured());
+    const [showSql, setShowSql] = useState(false);
 
     useEffect(() => {
         setIsConfigured(isSupabaseConfigured());
@@ -338,7 +520,7 @@ export const AdvancedSettingsTab: React.FC = () => {
     const handleClearCredentials = () => {
         localStorage.removeItem('supabase_url');
         localStorage.removeItem('supabase_key');
-        setSupabaseUrl('');
+        setSupabaseUrl(DEFAULT_SUPABASE_URL);
         setSupabaseKey('');
         setIsConfigured(false);
         showToast("Credenciales eliminadas. Modo Demo activado.", "success");
@@ -380,6 +562,11 @@ export const AdvancedSettingsTab: React.FC = () => {
         }
     };
 
+    const handleCopySql = () => {
+        navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
+        showToast("SQL copiado al portapapeles.");
+    };
+
     return (
         <div className="space-y-8">
              <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
@@ -413,6 +600,37 @@ export const AdvancedSettingsTab: React.FC = () => {
                  <div className="flex gap-4">
                      <button onClick={handleSaveCredentials} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Guardar Credenciales</button>
                      {isConfigured && <button onClick={handleClearCredentials} className="px-4 py-2 border border-red-500 text-red-500 rounded hover:bg-red-50">Desconectar</button>}
+                 </div>
+
+                 {/* Sección de SQL Generator */}
+                 <div className="mt-6 pt-6 border-t dark:border-gray-700">
+                     <button 
+                        onClick={() => setShowSql(!showSql)}
+                        className="flex items-center justify-between w-full text-left text-lg font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition-colors"
+                     >
+                         <span className="flex items-center gap-2"><FileCode className="h-5 w-5 text-indigo-500"/> Esquema de Base de Datos (SQL)</span>
+                         {showSql ? <ChevronUp className="h-5 w-5"/> : <ChevronDown className="h-5 w-5"/>}
+                     </button>
+                     
+                     {showSql && (
+                         <div className="mt-3 animate-fade-in-down">
+                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas y relaciones necesarias.
+                             </p>
+                             <div className="relative">
+                                <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto h-64">
+                                    {SUPABASE_SCHEMA_SQL}
+                                </pre>
+                                <button 
+                                    onClick={handleCopySql}
+                                    className="absolute top-2 right-2 p-2 bg-white/10 hover:bg-white/20 rounded text-white"
+                                    title="Copiar SQL"
+                                >
+                                    <Copy className="h-4 w-4" />
+                                </button>
+                             </div>
+                         </div>
+                     )}
                  </div>
 
                  {isConfigured && (

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { DashboardPage } from './pages/DashboardPage';
@@ -18,6 +18,7 @@ import { FloorPlanPage } from './pages/FloorPlanPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { CustomerPortalPage } from './pages/CustomerPortalPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
+import { Eye, EyeOff, Lock, LogOut } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: UserRole[] }> = ({ children, allowedRoles }) => {
   const { user } = useAppContext();
@@ -28,17 +29,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: UserRo
 
   if (!allowedRoles.includes(user.rol)) {
     // Special handling: If Super Admin tries to access a regular route but has access (is managing a restaurant), allow it.
-    // The allowedRoles check above handles strict role restriction. 
-    // If user IS Super Admin, they generally have access to everything in the AdminApp context EXCEPT when specifically restricted.
-    // However, if they are just landing, we want to be careful.
-    
     if (user.rol === UserRole.SUPER_ADMIN) {
-        // If Super Admin is trying to access /super-admin, allow (it's in allowedRoles usually)
-        // If Super Admin is trying to access /dashboard, allow (it's in allowedRoles)
-        // This block runs if allowedRoles DOES NOT include SUPER_ADMIN, which shouldn't happen for the main routes 
-        // as we added SUPER_ADMIN to them in constants/App.
-        
-        // Fallback: Redirect to super admin dashboard
         return <Navigate to="/super-admin" replace />;
     }
     
@@ -49,11 +40,116 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: UserRo
   return <>{children}</>;
 };
 
+const ForcePasswordChangePage: React.FC = () => {
+    const { user, updateUser, showToast, logout } = useAppContext();
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+
+        if (newPassword.length < 6) {
+            showToast("La contraseña debe tener al menos 6 caracteres.", "error");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showToast("Las contraseñas no coinciden.", "error");
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await updateUser({
+                ...user,
+                password: newPassword,
+                must_change_password: false // Clear the flag
+            });
+            showToast("Contraseña actualizada correctamente. Bienvenido.");
+        } catch (error) {
+            console.error(error);
+            showToast("Error al actualizar la contraseña.", "error");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
+            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+                <div className="text-center mb-6">
+                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 dark:bg-orange-900/30 mb-4">
+                        <Lock className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Cambio de Contraseña Requerido</h2>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        Por seguridad, debes cambiar tu contraseña temporal antes de continuar.
+                    </p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nueva Contraseña</label>
+                         <div className="mt-1 relative">
+                            <input 
+                                type={showPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:text-white"
+                                required
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                            >
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                         </div>
+                    </div>
+                    <div>
+                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirmar Contraseña</label>
+                         <input 
+                            type={showPassword ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:text-white"
+                            required
+                        />
+                    </div>
+                    
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50"
+                    >
+                        {isLoading ? 'Actualizando...' : 'Establecer Contraseña'}
+                    </button>
+                </form>
+                
+                <div className="mt-6 text-center">
+                    <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-2 w-full">
+                        <LogOut className="h-4 w-4" /> Cancelar y Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const AdminApp: React.FC = () => {
   const { user } = useAppContext();
 
   if (!user) {
     return <LoginPage />;
+  }
+
+  // Intercept users who must change password
+  if (user.must_change_password) {
+      return <ForcePasswordChangePage />;
   }
   
   // Determine the correct homepage based on role
