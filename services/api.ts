@@ -171,8 +171,8 @@ export const api = {
                 return undefined;
             }
             
+            // Log detailed error object as string to avoid [object Object]
             console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
-            // If table doesn't exist (42P01) or connection failed
             return undefined; 
         }
         

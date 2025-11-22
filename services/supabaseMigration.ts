@@ -15,6 +15,11 @@ export const migrateToSupabase = async (
     onProgress("Leyendo datos locales (bypass conexión)...");
     const localData = api.getAllLocalData();
     
+    // Check if we have data to migrate
+    if (!localData.users.length && !localData.restaurants.length) {
+        throw new Error("No se encontraron datos locales para migrar. Asegúrate de estar en modo local con datos cargados.");
+    }
+    
     const { 
         restaurants, 
         users: allUsers, 
