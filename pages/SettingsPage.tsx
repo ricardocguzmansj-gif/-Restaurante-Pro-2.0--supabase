@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
@@ -248,21 +249,46 @@ const UserManagementTab: React.FC = () => {
 
 const RestaurantSettingsTab: React.FC = () => {
     const { restaurantSettings, updateRestaurantSettings } = useAppContext();
-    const [formState, setFormState] = useState<RestaurantSettings | null>(null);
-    useEffect(() => { if (restaurantSettings) setFormState(restaurantSettings); }, [restaurantSettings]);
-    if (!formState) return <div>Cargando...</div>;
+    const [formState, setFormState] = useState<RestaurantSettings>({
+        nombre: '',
+        logo_url: '',
+        direccion: '',
+        telefono: '',
+        horarios: '',
+        iva_rate: 21,
+        precios_con_iva: true,
+        propina_opciones: [10, 15, 20]
+    });
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    useEffect(() => { 
+        if (restaurantSettings) {
+            setFormState(restaurantSettings); 
+            setIsLoaded(true);
+        }
+    }, [restaurantSettings]);
+
+    // Allow editing even if data is missing (e.g. new restaurant with no settings record yet)
+    useEffect(() => {
+        const t = setTimeout(() => setIsLoaded(true), 800);
+        return () => clearTimeout(t);
+    }, []);
+
+    if (!isLoaded) return <div className="p-4 text-center text-gray-500">Cargando configuración...</div>;
+
     const handleChange = (e: any) => setFormState({ ...formState, [e.target.name]: e.target.value });
     const handleSubmit = (e: any) => { e.preventDefault(); updateRestaurantSettings(formState); };
     const inputClasses = "mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500";
+    
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Datos del Restaurante</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label className="block text-sm font-medium">Nombre</label><input type="text" name="nombre" value={formState.nombre} onChange={handleChange} className={inputClasses} /></div>
-                <div><label className="block text-sm font-medium">URL del Logo</label><input type="text" name="logo_url" value={formState.logo_url} onChange={handleChange} className={inputClasses} /></div>
-                <div><label className="block text-sm font-medium">Dirección</label><input type="text" name="direccion" value={formState.direccion} onChange={handleChange} className={inputClasses} /></div>
-                <div><label className="block text-sm font-medium">Teléfono</label><input type="text" name="telefono" value={formState.telefono} onChange={handleChange} className={inputClasses} /></div>
-                <div className="md:col-span-2"><label className="block text-sm font-medium">Horarios</label><textarea name="horarios" value={formState.horarios} onChange={handleChange} rows={4} className={inputClasses}></textarea></div>
+                <div><label className="block text-sm font-medium">Nombre</label><input type="text" name="nombre" value={formState.nombre} onChange={handleChange} className={inputClasses} placeholder="Nombre del Restaurante" /></div>
+                <div><label className="block text-sm font-medium">URL del Logo</label><input type="text" name="logo_url" value={formState.logo_url} onChange={handleChange} className={inputClasses} placeholder="https://..." /></div>
+                <div><label className="block text-sm font-medium">Dirección</label><input type="text" name="direccion" value={formState.direccion} onChange={handleChange} className={inputClasses} placeholder="Dirección física" /></div>
+                <div><label className="block text-sm font-medium">Teléfono</label><input type="text" name="telefono" value={formState.telefono} onChange={handleChange} className={inputClasses} placeholder="Teléfono de contacto" /></div>
+                <div className="md:col-span-2"><label className="block text-sm font-medium">Horarios</label><textarea name="horarios" value={formState.horarios} onChange={handleChange} rows={4} className={inputClasses} placeholder="Ej: Lun-Dom 9:00 - 23:00"></textarea></div>
             </div>
             <div className="flex justify-end pt-4 border-t dark:border-gray-700"><button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600">Guardar Cambios</button></div>
         </form>
@@ -271,16 +297,33 @@ const RestaurantSettingsTab: React.FC = () => {
 
 const TaxesAndTipsTab: React.FC = () => {
     const { restaurantSettings, updateRestaurantSettings } = useAppContext();
-    const [formState, setFormState] = useState<RestaurantSettings | null>(null);
-    useEffect(() => { if (restaurantSettings) setFormState(restaurantSettings); }, [restaurantSettings]);
-    if (!formState) return <div>Cargando...</div>;
-    const handleIvaRateChange = (e: any) => setFormState(prev => prev ? { ...prev, iva_rate: parseFloat(e.target.value) || 0 } : null);
-    const handlePreciosConIvaChange = (e: any) => setFormState(prev => prev ? { ...prev, precios_con_iva: e.target.checked } : null);
+    const [formState, setFormState] = useState<RestaurantSettings>({
+        nombre: '', logo_url: '', direccion: '', telefono: '', horarios: '', iva_rate: 21, precios_con_iva: true, propina_opciones: [10, 15, 20]
+    });
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    useEffect(() => { 
+        if (restaurantSettings) {
+            setFormState(restaurantSettings); 
+            setIsLoaded(true);
+        }
+    }, [restaurantSettings]);
+
+    useEffect(() => {
+        const t = setTimeout(() => setIsLoaded(true), 800);
+        return () => clearTimeout(t);
+    }, []);
+
+    if (!isLoaded) return <div className="p-4 text-center text-gray-500">Cargando impuestos...</div>;
+
+    const handleIvaRateChange = (e: any) => setFormState(prev => ({ ...prev, iva_rate: parseFloat(e.target.value) || 0 }));
+    const handlePreciosConIvaChange = (e: any) => setFormState(prev => ({ ...prev, precios_con_iva: e.target.checked }));
     const handleTipOptionChange = (index: number, value: string) => { const newOptions = [...formState.propina_opciones]; newOptions[index] = parseInt(value) || 0; setFormState({ ...formState, propina_opciones: newOptions }); };
     const addTipOption = () => setFormState({ ...formState, propina_opciones: [...formState.propina_opciones, 0] });
     const removeTipOption = (index: number) => { setFormState({ ...formState, propina_opciones: formState.propina_opciones.filter((_, i) => i !== index) }); };
     const handleSubmit = (e: any) => { e.preventDefault(); updateRestaurantSettings(formState); };
     const inputClasses = "block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500";
+    
     return (
         <form onSubmit={handleSubmit} className="space-y-8">
             <div>
@@ -305,48 +348,35 @@ const TaxesAndTipsTab: React.FC = () => {
     );
 };
 
+// SQL Script for initial setup - UPDATED WITH SEED DATA
 const SUPABASE_SCHEMA_SQL = `
 -- CREACIÓN DE TABLAS Y RELACIONES PARA RESTAURANTE PRO 2.0
--- Copia y pega este script en el 'SQL Editor' de tu proyecto Supabase.
+-- Script Actualizado: DESHABILITA RLS e INCLUYE DATOS DE DEMOSTRACIÓN.
 
 -- =============================================================================
--- 🚨 LIMPIEZA PROFUNDA DE POLÍTICAS (Solución Error 54001: Stack Depth Limit)
--- Este bloque borra TODAS las políticas existentes en el esquema 'public' para
--- eliminar cualquier regla recursiva corrupta antes de crear las nuevas.
+-- 1. LIMPIEZA Y PREPARACIÓN
 -- =============================================================================
 
 DO $$ 
 DECLARE 
     r RECORD; 
 BEGIN 
+    -- Eliminar políticas existentes para evitar conflictos
     FOR r IN (SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public') LOOP 
         EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON "' || r.tablename || '";'; 
     END LOOP; 
 END $$;
 
--- Deshabilitar y rehabilitar RLS para asegurar un estado limpio
-ALTER TABLE IF EXISTS app_users DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS restaurants DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS categories DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS ingredients DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS menu_items DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS customers DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS tables DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS orders DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS coupons DISABLE ROW LEVEL SECURITY;
-
 -- =============================================================================
--- INICIO DEL ESQUEMA
+-- 2. CREACIÓN DE TABLAS (Si no existen)
 -- =============================================================================
 
--- 1. Restaurantes
 create table if not exists restaurants (
   id text primary key,
   settings jsonb not null default '{}'::jsonb,
   created_at timestamp with time zone default now()
 );
 
--- 2. Usuarios de la Aplicación (Sistema Propio)
 create table if not exists app_users (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -354,7 +384,7 @@ create table if not exists app_users (
   email text not null,
   rol text not null,
   avatar_url text,
-  password text, -- En producción real, usar auth.users o hashear
+  password text,
   estado_delivery text default 'DISPONIBLE',
   is_deleted boolean default false,
   must_change_password boolean default false,
@@ -362,7 +392,6 @@ create table if not exists app_users (
   created_at timestamp with time zone default now()
 );
 
--- 3. Categorías del Menú
 create table if not exists categories (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -371,7 +400,6 @@ create table if not exists categories (
   created_at timestamp with time zone default now()
 );
 
--- 4. Ingredientes (Inventario)
 create table if not exists ingredients (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -384,7 +412,6 @@ create table if not exists ingredients (
   created_at timestamp with time zone default now()
 );
 
--- 5. Ítems del Menú
 create table if not exists menu_items (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -393,7 +420,7 @@ create table if not exists menu_items (
   descripcion text,
   precio_base numeric default 0,
   coste numeric default 0,
-  receta jsonb default '[]'::jsonb, -- Array de {ingredient_id, cantidad}
+  receta jsonb default '[]'::jsonb,
   img_url text,
   etiquetas text[],
   disponible boolean default true,
@@ -404,7 +431,6 @@ create table if not exists menu_items (
   created_at timestamp with time zone default now()
 );
 
--- 6. Clientes (CRM)
 create table if not exists customers (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -420,9 +446,8 @@ create table if not exists customers (
   created_at timestamp with time zone default now()
 );
 
--- 7. Mesas
 create table if not exists tables (
-  id text primary key, -- Composite ID string (restId_tableId)
+  id text primary key,
   table_number integer,
   restaurant_id text references restaurants(id) on delete cascade,
   nombre text,
@@ -430,20 +455,19 @@ create table if not exists tables (
   x integer default 0,
   y integer default 0,
   shape text default 'square',
-  order_id integer, -- Referencia suelta para estado rápido
+  order_id integer,
   mozo_id text,
   created_at timestamp with time zone default now()
 );
 
--- 8. Pedidos
 create table if not exists orders (
   id bigint generated by default as identity primary key,
   restaurant_id text references restaurants(id) on delete cascade,
   customer_id text references customers(id) on delete set null,
   table_id integer,
-  creado_por_id text, -- Referencia a app_users.id
-  repartidor_id text, -- Referencia a app_users.id
-  mozo_id text,       -- Referencia a app_users.id
+  creado_por_id text,
+  repartidor_id text,
+  mozo_id text,
   tipo text not null,
   estado text not null,
   subtotal numeric default 0,
@@ -453,11 +477,10 @@ create table if not exists orders (
   total numeric default 0,
   items jsonb default '[]'::jsonb,
   payments jsonb default '[]'::jsonb,
-  creado_en text, -- ISO String guardado como texto para compatibilidad simple
+  creado_en text,
   created_at timestamp with time zone default now()
 );
 
--- 9. Cupones
 create table if not exists coupons (
   id text primary key,
   restaurant_id text references restaurants(id) on delete cascade,
@@ -470,44 +493,39 @@ create table if not exists coupons (
   created_at timestamp with time zone default now()
 );
 
--- Índices para optimizar búsquedas comunes
+-- Indices
 create index if not exists idx_orders_restaurant on orders(restaurant_id);
 create index if not exists idx_orders_customer on orders(customer_id);
 create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id);
 create index if not exists idx_app_users_email on app_users(email);
 
 -- =============================================================================
--- SEGURIDAD (Row Level Security - RLS)
+-- 3. SEGURIDAD: DESHABILITAR RLS (Solución para "No se ven los datos")
 -- =============================================================================
-
--- Habilitar RLS para todas las tablas
-alter table restaurants enable row level security;
-alter table app_users enable row level security;
-alter table categories enable row level security;
-alter table ingredients enable row level security;
-alter table menu_items enable row level security;
-alter table customers enable row level security;
-alter table tables enable row level security;
-alter table orders enable row level security;
-alter table coupons enable row level security;
-
--- Políticas de Acceso General (NO RECURSIVAS)
-create policy "Enable All Access for App Logic" on restaurants for all using (true);
-create policy "Enable All Access for Users" on app_users for all using (true);
-create policy "Enable All Access for Categories" on categories for all using (true);
-create policy "Enable All Access for Ingredients" on ingredients for all using (true);
-create policy "Enable All Access for Menu" on menu_items for all using (true);
-create policy "Enable All Access for Customers" on customers for all using (true);
-create policy "Enable All Access for Tables" on tables for all using (true);
-create policy "Enable All Access for Orders" on orders for all using (true);
-create policy "Enable All Access for Coupons" on coupons for all using (true);
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE app_users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ingredients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tables DISABLE ROW LEVEL SECURITY;
+ALTER TABLE orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE coupons DISABLE ROW LEVEL SECURITY;
 
 -- =============================================================================
--- SEED: SUPER ADMIN POR DEFECTO
+-- 4. SEED DATA (DATOS DE DEMOSTRACIÓN)
 -- =============================================================================
--- Crea un usuario inicial para poder hacer login inmediatamente
+
+-- 4.1 Restaurante Demo
+INSERT INTO restaurants (id, settings)
+VALUES ('rest-demo', '{"nombre": "Restaurante Demo", "direccion": "Calle Falsa 123", "telefono": "555-1234", "logo_url": "https://via.placeholder.com/150", "horarios": "Lun-Dom 9am-11pm", "iva_rate": 21, "precios_con_iva": true, "propina_opciones": [10, 15, 20]}')
+ON CONFLICT (id) DO NOTHING;
+
+-- 4.2 Usuarios (Super Admin y Gerente Demo)
 INSERT INTO app_users (id, restaurant_id, nombre, email, rol, password, avatar_url)
-VALUES ('user-super-admin', NULL, 'Super Admin', 'admin@restaurante.com', 'SUPER_ADMIN', '123456', 'https://i.pravatar.cc/150?u=super')
+VALUES 
+('user-super-admin', NULL, 'Super Admin', 'admin@restaurante.com', 'SUPER_ADMIN', '123456', 'https://i.pravatar.cc/150?u=super'),
+('user-demo-admin', 'rest-demo', 'Gerente Demo', 'demo@restaurante.com', 'ADMIN', '123456', 'https://i.pravatar.cc/150?u=demo')
 ON CONFLICT (id) DO NOTHING;
 `;
 
@@ -540,7 +558,7 @@ export const AdvancedSettingsTab: React.FC = () => {
                      {showSql && (
                          <div className="mt-3 animate-fade-in-down">
                              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas, <strong className="text-orange-500">corregir errores de permisos (54001)</strong> y crear el usuario <strong>Admin</strong> por defecto.
+                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas, <strong className="text-orange-500">corregir errores de permisos (54001)</strong> y crear usuarios demo.
                              </p>
                              <div className="relative">
                                 <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto h-64">

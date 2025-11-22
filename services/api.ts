@@ -1,3 +1,4 @@
+
 import { Order, OrderStatus, MenuItem, User, Customer, Coupon, OrderType, UserRole, PaymentDetails, MenuCategory, RestaurantSettings, Table, Ingredient, TableStatus, Restaurant } from '../types';
 import { getSupabaseClient } from './supabase';
 import { demoRestaurants, demoUsers, demoCategories, demoIngredients, demoMenuItems, demoCustomers, demoTables, demoOrders, demoCoupons } from '../data/db';
@@ -6,15 +7,20 @@ import { demoRestaurants, demoUsers, demoCategories, demoIngredients, demoMenuIt
 const supabase = getSupabaseClient();
 
 const checkConnection = () => {
-    if (!supabase) throw new Error("La conexión a Supabase no está configurada. Verifique las variables de entorno o credenciales en services/supabase.ts.");
+    if (!supabase) throw new Error("La conexión a Supabase no está configurada. Verifique las credenciales en services/supabase.ts.");
 };
 
 export const api = {
   // --- RESTAURANTS ---
   getRestaurants: async (): Promise<Restaurant[]> => {
       checkConnection();
+      console.debug("API: Fetching restaurants...");
       const { data, error } = await supabase!.from('restaurants').select('*');
-      if (error) throw error;
+      if (error) {
+          console.error("API: Error fetching restaurants:", error);
+          throw error;
+      }
+      console.debug(`API: Found ${data?.length || 0} restaurants.`);
       return data || [];
   },
 
@@ -67,6 +73,7 @@ export const api = {
   // --- USERS ---
   login: async (email: string, password_provided: string): Promise<User | undefined> => {
     checkConnection();
+    console.debug(`API: Attempting login for ${email}...`);
     try {
         // Usamos la tabla personalizada 'app_users' según el esquema definido.
         const { data, error } = await supabase!
@@ -77,28 +84,35 @@ export const api = {
             .maybeSingle();
         
         if (error) {
-            console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
+            console.error("API: Supabase Login Error:", error);
+            // Handle specific database errors
             if (error.code === '54001' || String(error.code) === '54001' || error.message.includes('stack depth limit')) {
                 throw new Error("Error 54001: Recursión en la Base de Datos. Ejecute el script SQL de limpieza.");
             }
             if (error.code === '42P01') {
                  throw new Error("Tabla 'app_users' no existe. Ejecute el script SQL en Supabase.");
             }
-            throw new Error(`Error de base de datos: ${error.message}`);
+            throw new Error(error.message);
         }
         
-        if (!data) return undefined;
+        if (!data) {
+            console.debug("API: Login failed - User not found.");
+            return undefined;
+        }
         
-        // Nota: En producción real, usar Supabase Auth o bcrypt para comparar hashes.
-        // Aquí comparamos texto plano según el esquema actual.
         if (data.password === password_provided) {
+             console.debug("API: Login success.");
              return data as User;
+        } else {
+             console.debug("API: Login failed - Invalid password.");
         }
         return undefined;
     } catch (err: any) {
-        console.error("Login Exception:", err);
-        if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
-            throw new Error("Error de conexión. Verifique su internet o si el proyecto Supabase está pausado (Free Tier).");
+        console.error("API: Login Exception:", err);
+        // Catch generic fetch errors often caused by network or bad project URL
+        const errMsg = err.message || '';
+        if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
+            throw new Error("Error de conexión con Supabase. Verifique que el proyecto esté activo y las credenciales sean correctas.");
         }
         throw err;
     }
