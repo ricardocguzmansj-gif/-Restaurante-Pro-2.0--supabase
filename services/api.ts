@@ -32,6 +32,23 @@ const simulateDelay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const supabase = getSupabaseClient();
 
 export const api = {
+  // --- SPECIAL MIGRATION HELPER ---
+  // This forces retrieval of LOCAL data even if Supabase is configured.
+  // Essential for the migration script to read source data correctly.
+  getAllLocalData: () => {
+      return {
+          restaurants: localRestaurants,
+          users: localUsers,
+          categories: localCategories,
+          ingredients: localIngredients,
+          menuItems: localMenuItems,
+          customers: localCustomers,
+          tables: localTables,
+          orders: localOrders,
+          coupons: localCoupons
+      };
+  },
+
   // --- RESTAURANTS ---
   getRestaurants: async (): Promise<Restaurant[]> => {
       if (isSupabaseConfigured() && supabase) {
@@ -148,9 +165,20 @@ export const api = {
             .eq('is_deleted', false)
             .single();
         
-        if (error || !data) return undefined;
+        if (error) {
+            // PGRST116 code is "The result contains 0 rows" which just means user not found
+            if (error.code === 'PGRST116') {
+                return undefined;
+            }
+            
+            console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
+            // If table doesn't exist (42P01) or connection failed
+            return undefined; 
+        }
+        
+        if (!data) return undefined;
+        
         if (data.password === password_provided) {
-             // Ensure numeric fields are parsed if needed (though Supabase handles types well)
              return data as User;
         }
         return undefined;
