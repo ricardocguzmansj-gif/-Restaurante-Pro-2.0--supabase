@@ -25,10 +25,10 @@ const getEnv = (key: string) => {
 
 // --- CREDENCIALES DE PRODUCCIÓN ---
 // Derivadas del JWT proporcionado:
-// Ref: rlrnrnngfkzovxoocntp
-// Url: https://rlrnrnngfkzovxoocntp.supabase.co
-const PROVIDED_URL = "https://rlrnrnngfkzovxoocntp.supabase.co";
-const PROVIDED_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJscm5ybm5nZmt6b3Z4b29jbnRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1ODkxMTIsImV4cCI6MjA3OTE2NTExMn0.G4iLMiRgy8tzA3bKj_ZKvB2Y30NLJpns3L8TZGdObX8";
+// Ref: grtifyijkqxckkglfibq
+// Url: https://grtifyijkqxckkglfibq.supabase.co
+const PROVIDED_URL = "https://grtifyijkqxckkglfibq.supabase.co";
+const PROVIDED_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdydGlmeWlqa3F4Y2trZ2xmaWJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjA4OTYsImV4cCI6MjA3OTM5Njg5Nn0.RjcHfJhPJ5MBHBZ5m6EeQs9bhxKP4Ycfh17eKSXVLNc";
 
 // Priorizamos variables de entorno, si no existen, usamos las proporcionadas hardcodeadas
 const supabaseUrl = getEnv('VITE_SUPABASE_URL') || PROVIDED_URL;

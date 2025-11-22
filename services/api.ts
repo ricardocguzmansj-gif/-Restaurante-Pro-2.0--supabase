@@ -67,33 +67,41 @@ export const api = {
   // --- USERS ---
   login: async (email: string, password_provided: string): Promise<User | undefined> => {
     checkConnection();
-    // Usamos la tabla personalizada 'app_users' según el esquema definido.
-    const { data, error } = await supabase!
-        .from('app_users')
-        .select('*')
-        .ilike('email', email)
-        .eq('is_deleted', false)
-        .maybeSingle();
-    
-    if (error) {
-        console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
-        if (error.code === '54001' || String(error.code) === '54001' || error.message.includes('stack depth limit')) {
-            throw new Error("Error 54001: Recursión en la Base de Datos. Ejecute el script SQL de limpieza.");
+    try {
+        // Usamos la tabla personalizada 'app_users' según el esquema definido.
+        const { data, error } = await supabase!
+            .from('app_users')
+            .select('*')
+            .ilike('email', email)
+            .eq('is_deleted', false)
+            .maybeSingle();
+        
+        if (error) {
+            console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
+            if (error.code === '54001' || String(error.code) === '54001' || error.message.includes('stack depth limit')) {
+                throw new Error("Error 54001: Recursión en la Base de Datos. Ejecute el script SQL de limpieza.");
+            }
+            if (error.code === '42P01') {
+                 throw new Error("Tabla 'app_users' no existe. Ejecute el script SQL en Supabase.");
+            }
+            throw new Error(`Error de base de datos: ${error.message}`);
         }
-        if (error.code === '42P01') {
-             throw new Error("Tabla 'app_users' no existe. Ejecute el script SQL en Supabase.");
+        
+        if (!data) return undefined;
+        
+        // Nota: En producción real, usar Supabase Auth o bcrypt para comparar hashes.
+        // Aquí comparamos texto plano según el esquema actual.
+        if (data.password === password_provided) {
+             return data as User;
         }
-        throw new Error(`Error al iniciar sesión: ${error.message}`);
+        return undefined;
+    } catch (err: any) {
+        console.error("Login Exception:", err);
+        if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+            throw new Error("Error de conexión. Verifique su internet o si el proyecto Supabase está pausado (Free Tier).");
+        }
+        throw err;
     }
-    
-    if (!data) return undefined;
-    
-    // Nota: En producción real, usar Supabase Auth o bcrypt para comparar hashes.
-    // Aquí comparamos texto plano según el esquema actual.
-    if (data.password === password_provided) {
-         return data as User;
-    }
-    return undefined;
   },
 
   recoverPassword: async (email: string): Promise<string> => {
