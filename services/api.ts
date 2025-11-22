@@ -163,16 +163,17 @@ export const api = {
             .select('*')
             .ilike('email', email)
             .eq('is_deleted', false)
-            .single();
+            .maybeSingle(); // Use maybeSingle instead of single to handle 0 rows gracefully
         
         if (error) {
-            // PGRST116 code is "The result contains 0 rows" which just means user not found
-            if (error.code === 'PGRST116') {
-                return undefined;
+            // Log detailed error object
+            console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
+            
+            // 54001 is Stack Depth Limit Exceeded (infinite recursion in RLS policies)
+            if (error.code === '54001' || String(error.code) === '54001' || error.message.includes('stack depth limit')) {
+                throw new Error("Error 54001: Recursión en la Base de Datos. Vaya a 'Configuración > Avanzado' y ejecute el script SQL actualizado para limpiar las políticas RLS.");
             }
             
-            // Log detailed error object as string to avoid [object Object]
-            console.error("Supabase Login Error:", JSON.stringify(error, null, 2));
             return undefined; 
         }
         

@@ -4,7 +4,7 @@ import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
 import { User, UserRole, RestaurantSettings } from '../types';
 import { PlusCircle, X, Trash2, AlertTriangle, Database, Loader2, CheckCircle, Key, Eye, EyeOff, FileCode, Copy, ChevronDown, ChevronUp, Wifi } from 'lucide-react';
-import { migrateToSupabase } from '../services/supabaseMigration';
+import { migrateToSupabase } from '../services/supabaseMigration.ts';
 import { isSupabaseConfigured, DEFAULT_SUPABASE_URL } from '../services/supabase';
 import { createClient } from '@supabase/supabase-js';
 
@@ -321,6 +321,36 @@ const SUPABASE_SCHEMA_SQL = `
 -- CREACIÓN DE TABLAS Y RELACIONES PARA RESTAURANTE PRO 2.0
 -- Copia y pega este script en el 'SQL Editor' de tu proyecto Supabase.
 
+-- =============================================================================
+-- 🚨 LIMPIEZA PROFUNDA DE POLÍTICAS (Solución Error 54001: Stack Depth Limit)
+-- Este bloque borra TODAS las políticas existentes en el esquema 'public' para
+-- eliminar cualquier regla recursiva corrupta antes de crear las nuevas.
+-- =============================================================================
+
+DO $$ 
+DECLARE 
+    r RECORD; 
+BEGIN 
+    FOR r IN (SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public') LOOP 
+        EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON "' || r.tablename || '";'; 
+    END LOOP; 
+END $$;
+
+-- Deshabilitar y rehabilitar RLS para asegurar un estado limpio
+ALTER TABLE IF EXISTS app_users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS ingredients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS menu_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS tables DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS coupons DISABLE ROW LEVEL SECURITY;
+
+-- =============================================================================
+-- INICIO DEL ESQUEMA
+-- =============================================================================
+
 -- 1. Restaurantes
 create table if not exists restaurants (
   id text primary key,
@@ -459,11 +489,7 @@ create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id
 create index if not exists idx_app_users_email on app_users(email);
 
 -- 10. SEGURIDAD (Row Level Security - RLS)
--- Habilita RLS para proteger los datos.
--- NOTA: Dado que esta App usa un sistema de usuarios propio (tabla app_users) y no
--- Supabase Auth nativo para la sesión, estas políticas son PERMISIVAS para permitir
--- que la API Key funcione. En producción real, se recomienda integrar Supabase Auth.
-
+-- Habilitar RLS para todas las tablas
 alter table restaurants enable row level security;
 alter table app_users enable row level security;
 alter table categories enable row level security;
@@ -474,17 +500,10 @@ alter table tables enable row level security;
 alter table orders enable row level security;
 alter table coupons enable row level security;
 
--- Políticas de Lectura Pública (Para el Portal de Clientes y Menú Digital)
-create policy "Public Read Restaurants" on restaurants for select using (true);
-create policy "Public Read Categories" on categories for select using (true);
-create policy "Public Read Menu Items" on menu_items for select using (true);
+-- Políticas de Acceso General (NO RECURSIVAS)
+-- Usamos 'using (true)' para permitir que la API Key (Service o Anon) acceda a todo
+-- sin hacer consultas recursivas a la misma tabla.
 
--- Políticas de Escritura Pública (Para que clientes creen pedidos)
-create policy "Public Create Customers" on customers for insert with check (true);
-create policy "Public Create Orders" on orders for insert with check (true);
-
--- Políticas de Acceso General (Permite funcionamiento del Dashboard con la API Key)
--- En una implementación estricta, aquí se usaría: using (auth.uid() IS NOT NULL)
 create policy "Enable All Access for App Logic" on restaurants for all using (true);
 create policy "Enable All Access for Users" on app_users for all using (true);
 create policy "Enable All Access for Categories" on categories for all using (true);
@@ -546,6 +565,7 @@ export const AdvancedSettingsTab: React.FC = () => {
             console.error("Connection Test Error:", error);
             let msg = error.message;
             if (error.code === 'PGRST301') msg = "No se pudo conectar a la API (JWT o URL inválida).";
+            if (error.code === '54001') msg = "Error CRÍTICO: Recursión en políticas (54001). Ejecuta el SQL de abajo.";
             if (String(error).includes('FetchError') || String(error).includes('Network request failed')) msg = "Error de red. Verifica la URL.";
             showToast(`❌ Falló la conexión: ${msg}`, "error");
         } finally {
@@ -704,7 +724,7 @@ export const AdvancedSettingsTab: React.FC = () => {
                      {showSql && (
                          <div className="mt-3 animate-fade-in-down">
                              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas y relaciones necesarias.
+                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas y <strong className="text-orange-500">corregir errores de permisos (54001)</strong>.
                              </p>
                              <div className="relative">
                                 <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto h-64">

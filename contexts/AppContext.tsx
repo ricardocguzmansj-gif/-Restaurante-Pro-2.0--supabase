@@ -267,9 +267,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         } else {
           showToast("Email o contraseña incorrectos", "error");
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        showToast("Error de conexión al iniciar sesión", "error");
+        // Show specific message if available, critical for Supabase errors like recursion
+        showToast(e.message || "Error de conexión al iniciar sesión", "error");
     }
   };
 
