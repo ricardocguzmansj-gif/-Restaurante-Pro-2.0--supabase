@@ -1,20 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
 import { User, UserRole, RestaurantSettings } from '../types';
-import { PlusCircle, X, Trash2, AlertTriangle, Database, Loader2, CheckCircle, Key, Eye, EyeOff, FileCode, Copy, ChevronDown, ChevronUp, Wifi } from 'lucide-react';
-import { migrateToSupabase } from '../services/supabaseMigration.ts';
-import { isSupabaseConfigured, DEFAULT_SUPABASE_URL } from '../services/supabase';
-import { createClient } from '@supabase/supabase-js';
-
+import { PlusCircle, X, Trash2, Database, Key, Eye, EyeOff, FileCode, Copy, ChevronDown, ChevronUp } from 'lucide-react';
 
 const UserModal: React.FC<{
     userToEdit: User | null;
     onClose: () => void;
     onSave: (userData: Omit<User, 'id' | 'restaurant_id' | 'avatar_url'> | User) => void;
 }> = ({ userToEdit, onClose, onSave }) => {
-    // Renaming context user to 'currentUser' to avoid confusion with local variables
     const { users, showToast, user: currentUser } = useAppContext();
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
@@ -31,7 +25,7 @@ const UserModal: React.FC<{
                 nombre: userToEdit.nombre,
                 email: userToEdit.email,
                 rol: userToEdit.rol,
-                password: '', // Don't show existing password for security
+                password: '',
                 confirmPassword: ''
             });
         }
@@ -78,15 +72,10 @@ const UserModal: React.FC<{
             rol: formData.rol,
         };
 
-        // Only update password if entered
         if (formData.password) {
             dataToSave.password = formData.password;
-            // If user is being edited and password changed, reset the must_change flag locally to false (as admin set it)
-            // or keep it true? Usually admin sets it to something known and user changes it.
-            // For simplicity here, we assume admin setting it makes it valid.
             dataToSave.must_change_password = false;
         } else if (!userToEdit) {
-             // Default password for new users if not provided
              dataToSave.password = 'password';
              dataToSave.must_change_password = true;
         }
@@ -100,7 +89,6 @@ const UserModal: React.FC<{
 
     const inputClasses = "mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500";
     
-    // Filter roles: SUPER_ADMIN option is ONLY available if the logged-in user is a SUPER_ADMIN
     const availableRoles = Object.values(UserRole).filter(role => {
         if (role === UserRole.SUPER_ADMIN) {
             return currentUser?.rol === UserRole.SUPER_ADMIN;
@@ -488,7 +476,10 @@ create index if not exists idx_orders_customer on orders(customer_id);
 create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id);
 create index if not exists idx_app_users_email on app_users(email);
 
--- 10. SEGURIDAD (Row Level Security - RLS)
+-- =============================================================================
+-- SEGURIDAD (Row Level Security - RLS)
+-- =============================================================================
+
 -- Habilitar RLS para todas las tablas
 alter table restaurants enable row level security;
 alter table app_users enable row level security;
@@ -501,9 +492,6 @@ alter table orders enable row level security;
 alter table coupons enable row level security;
 
 -- Políticas de Acceso General (NO RECURSIVAS)
--- Usamos 'using (true)' para permitir que la API Key (Service o Anon) acceda a todo
--- sin hacer consultas recursivas a la misma tabla.
-
 create policy "Enable All Access for App Logic" on restaurants for all using (true);
 create policy "Enable All Access for Users" on app_users for all using (true);
 create policy "Enable All Access for Categories" on categories for all using (true);
@@ -513,140 +501,19 @@ create policy "Enable All Access for Customers" on customers for all using (true
 create policy "Enable All Access for Tables" on tables for all using (true);
 create policy "Enable All Access for Orders" on orders for all using (true);
 create policy "Enable All Access for Coupons" on coupons for all using (true);
+
+-- =============================================================================
+-- SEED: SUPER ADMIN POR DEFECTO
+-- =============================================================================
+-- Crea un usuario inicial para poder hacer login inmediatamente
+INSERT INTO app_users (id, restaurant_id, nombre, email, rol, password, avatar_url)
+VALUES ('user-super-admin', NULL, 'Super Admin', 'admin@restaurante.com', 'SUPER_ADMIN', '123456', 'https://i.pravatar.cc/150?u=super')
+ON CONFLICT (id) DO NOTHING;
 `;
 
 export const AdvancedSettingsTab: React.FC = () => {
-    const { showToast } = useAppContext();
-    const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL);
-    
-    // Manage Anon Key (for app usage)
-    const [supabaseAnonKey, setSupabaseAnonKey] = useState(localStorage.getItem('supabase_key') || '');
-    
-    // Manage Service Role Key (specifically for migration)
-    const [supabaseServiceKey, setSupabaseServiceKey] = useState(localStorage.getItem('supabase_service_role_key') || '');
-
-    const [migrationStatus, setMigrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [migrationLog, setMigrationLog] = useState<string[]>([]);
-    const [isConfigured, setIsConfigured] = useState(isSupabaseConfigured());
     const [showSql, setShowSql] = useState(false);
-    const [isTestingConnection, setIsTestingConnection] = useState(false);
-
-    useEffect(() => {
-        setIsConfigured(isSupabaseConfigured());
-    }, []);
-
-    const handleTestConnection = async () => {
-        if (!supabaseUrl || !supabaseAnonKey) {
-            showToast("Ingresa la URL y la Anon Key para probar la conexión de la app.", "error");
-            return;
-        }
-
-        setIsTestingConnection(true);
-        try {
-            // Test with Anon Key (this is what the app uses)
-            const tempClient = createClient(supabaseUrl, supabaseAnonKey);
-            
-            // Attempt a lightweight query to a public table (restaurants)
-            const { error } = await tempClient
-                .from('restaurants')
-                .select('*', { count: 'exact', head: true });
-
-            if (error) {
-                // Try to handle known cases
-                if (error.code === '42P01') { // Undefined table
-                     showToast("⚠️ Conectado, pero faltan las tablas. Ejecuta el SQL.", "error");
-                     return;
-                }
-                throw error;
-            }
-
-            showToast("✅ ¡Conexión exitosa con Supabase (Anon Key)!", "success");
-        } catch (error: any) {
-            console.error("Connection Test Error:", error);
-            let msg = error.message;
-            if (error.code === 'PGRST301') msg = "No se pudo conectar a la API (JWT o URL inválida).";
-            if (error.code === '54001') msg = "Error CRÍTICO: Recursión en políticas (54001). Ejecuta el SQL de abajo.";
-            if (String(error).includes('FetchError') || String(error).includes('Network request failed')) msg = "Error de red. Verifica la URL.";
-            showToast(`❌ Falló la conexión: ${msg}`, "error");
-        } finally {
-            setIsTestingConnection(false);
-        }
-    };
-
-    const handleSaveCredentials = () => {
-        localStorage.setItem('supabase_url', supabaseUrl);
-        localStorage.setItem('supabase_key', supabaseAnonKey);
-        
-        // Also store the Service Role Key separately if provided
-        if (supabaseServiceKey) {
-            localStorage.setItem('supabase_service_role_key', supabaseServiceKey);
-        } else {
-            localStorage.removeItem('supabase_service_role_key');
-        }
-
-        setIsConfigured(true);
-        showToast("Credenciales guardadas. Recarga la página para activar el modo Online.", "success");
-    };
-
-    const handleClearCredentials = () => {
-        localStorage.removeItem('supabase_url');
-        localStorage.removeItem('supabase_key');
-        localStorage.removeItem('supabase_service_role_key');
-        
-        setSupabaseUrl(DEFAULT_SUPABASE_URL);
-        setSupabaseAnonKey('');
-        setSupabaseServiceKey('');
-        
-        setIsConfigured(false);
-        showToast("Credenciales eliminadas. Modo Demo activado.", "success");
-    };
-
-    const handleResetData = () => {
-        if (window.confirm("¿ESTÁS SEGURO? Esto eliminará TODOS los datos locales.")) {
-            const appKeys = ['orders', 'menuItems', 'customers', 'coupons', 'users', 'categories', 'restaurantSettings', 'tables', 'ingredients'];
-            appKeys.forEach(key => localStorage.removeItem(key));
-            window.location.reload();
-        }
-    };
-
-    const handleMigrate = async () => {
-        // Always take from state first, so user can modify before clicking without saving
-        const urlToUse = supabaseUrl;
-        // Prefer Service Role Key for migration if available, otherwise fallback to Anon Key
-        const migrationKey = supabaseServiceKey || supabaseAnonKey;
-
-        if (!urlToUse) {
-            showToast("Error: URL de Supabase faltante.", "error");
-            return;
-        }
-
-        if (!migrationKey) {
-            showToast("Error: Clave de API faltante (Service Role Key recomendada).", "error");
-            return;
-        }
-        
-        if(!window.confirm(`¿Iniciar migración de datos locales a Supabase?\n\nSe usará la key: ${supabaseServiceKey ? 'SERVICE ROLE (Recomendado)' : 'ANON (Puede fallar si RLS es estricto)'}`)) {
-            return;
-        }
-
-        setMigrationStatus('loading');
-        setMigrationLog(['Iniciando conexión para migración...']);
-
-        try {
-            // Pass the current state credentials directly to migration service
-            await migrateToSupabase(urlToUse, migrationKey, (msg) => {
-                setMigrationLog(prev => [...prev, msg]);
-            });
-            setMigrationStatus('success');
-            showToast("Migración exitosa. Ahora estás trabajando Online.", "success");
-            setTimeout(() => window.location.reload(), 2000);
-        } catch (error: any) {
-            console.error(error);
-            setMigrationStatus('error');
-            setMigrationLog(prev => [...prev, `❌ ERROR: ${error.message}`]);
-            showToast("Falló la migración.", "error");
-        }
-    };
+    const { showToast } = useAppContext();
 
     const handleCopySql = () => {
         navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
@@ -660,57 +527,6 @@ export const AdvancedSettingsTab: React.FC = () => {
                      <Database className="h-6 w-6 text-blue-600" /> Configuración de Base de Datos (Supabase)
                  </h2>
                  
-                 <div className="grid gap-4 mb-4">
-                     <div>
-                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Supabase Project URL</label>
-                         <input 
-                            type="text" 
-                            value={supabaseUrl} 
-                            onChange={(e) => setSupabaseUrl(e.target.value)}
-                            placeholder="https://xyz.supabase.co"
-                            className="mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
-                        />
-                     </div>
-                     
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Supabase Anon Key (Public)</label>
-                             <p className="text-xs text-gray-500 mb-1">Usada para la operación diaria de la App.</p>
-                             <input 
-                                type="password" 
-                                value={supabaseAnonKey} 
-                                onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                                className="mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
-                            />
-                         </div>
-                         <div>
-                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Supabase Service Role Key (Secret)</label>
-                             <p className="text-xs text-orange-600 dark:text-orange-400 mb-1 font-medium">Recomendada SOLO para la migración inicial.</p>
-                             <input 
-                                type="password" 
-                                value={supabaseServiceKey} 
-                                onChange={(e) => setSupabaseServiceKey(e.target.value)}
-                                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                                className="mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-orange-300 dark:border-orange-500 rounded-md focus:ring-orange-500 focus:border-orange-500"
-                            />
-                         </div>
-                     </div>
-                 </div>
-                 
-                 <div className="flex gap-4 flex-wrap">
-                     <button 
-                        onClick={handleTestConnection} 
-                        disabled={isTestingConnection}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 font-medium border border-gray-300 dark:border-gray-600"
-                     >
-                        {isTestingConnection ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
-                        Probar Conexión (App)
-                     </button>
-                     <button onClick={handleSaveCredentials} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">Guardar Credenciales</button>
-                     {isConfigured && <button onClick={handleClearCredentials} className="px-4 py-2 border border-red-500 text-red-500 rounded hover:bg-red-50">Desconectar</button>}
-                 </div>
-
                  {/* Sección de SQL Generator */}
                  <div className="mt-6 pt-6 border-t dark:border-gray-700">
                      <button 
@@ -724,7 +540,7 @@ export const AdvancedSettingsTab: React.FC = () => {
                      {showSql && (
                          <div className="mt-3 animate-fade-in-down">
                              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas y <strong className="text-orange-500">corregir errores de permisos (54001)</strong>.
+                                 Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas, <strong className="text-orange-500">corregir errores de permisos (54001)</strong> y crear el usuario <strong>Admin</strong> por defecto.
                              </p>
                              <div className="relative">
                                 <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto h-64">
@@ -741,42 +557,6 @@ export const AdvancedSettingsTab: React.FC = () => {
                          </div>
                      )}
                  </div>
-
-                 {/* MIGRACIÓN SIEMPRE VISIBLE si hay datos para poner credenciales */}
-                 <div className="mt-6 pt-6 border-t dark:border-gray-700">
-                    <h3 className="text-lg font-medium mb-2">Migración de Datos</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                            Sube tus datos locales actuales a la base de datos configurada. <br/>
-                            <span className="text-xs text-gray-500 italic">Nota: Se recomienda usar la Service Role Key para evitar problemas de permisos.</span>
-                    </p>
-                    <button
-                        onClick={handleMigrate}
-                        disabled={migrationStatus === 'loading'}
-                        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                        {migrationStatus === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                        {migrationStatus === 'loading' ? 'Migrando...' : 'Iniciar Migración'}
-                    </button>
-                    {migrationLog.length > 0 && (
-                        <div className="mt-4 p-3 bg-black text-green-400 font-mono text-xs rounded-md h-40 overflow-y-auto">
-                            {migrationLog.map((log, i) => <div key={i}>{log}</div>)}
-                        </div>
-                    )}
-                 </div>
-            </div>
-
-            <div className="border-t dark:border-gray-700 pt-8">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Zona de Peligro</h2>
-                <div className="p-6 border-2 border-red-500 rounded-lg bg-red-50 dark:bg-red-900/20">
-                    <div className="flex items-start">
-                        <AlertTriangle className="h-6 w-6 text-red-500 mr-3" />
-                        <div>
-                            <h3 className="text-lg font-medium text-red-800 dark:text-red-200">Restablecer Datos Locales</h3>
-                            <p className="mt-2 text-sm text-red-700 dark:text-red-300">Elimina datos locales (Demo). No afecta a Supabase.</p>
-                            <button onClick={handleResetData} className="mt-4 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700">Restablecer Todo</button>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );

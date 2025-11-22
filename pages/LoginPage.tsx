@@ -1,8 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { Pizza, Loader2, Eye, EyeOff, X, Mail, ArrowRight, CheckCircle, AlertTriangle, Database, WifiOff } from 'lucide-react';
+import React, { useState } from 'react';
+import { Pizza, Loader2, Eye, EyeOff, X, Mail, ArrowRight, CheckCircle, AlertTriangle, Database } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
-import { isSupabaseConfigured } from '../services/supabase';
 
 const ForgotPasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { recoverPassword } = useAppContext();
@@ -121,32 +120,14 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
-  const [isCloudMode, setIsCloudMode] = useState(false);
-
-  useEffect(() => {
-      setIsCloudMode(isSupabaseConfigured());
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     setIsLoading(true);
 
-    // La función login del contexto gestionará la búsqueda del usuario
-    // y mostrará un toast de error si no se encuentra.
     await login(email, password);
-
-    // Si el login es exitoso, este componente se desmontará.
-    // Si falla, permanece montado, por lo que desactivamos el estado de carga.
     setIsLoading(false);
-  };
-
-  const handleResetToLocal = () => {
-      if(window.confirm("Esto desconectará Supabase y volverá al modo Demo Local. ¿Continuar?")) {
-          localStorage.removeItem('supabase_url');
-          localStorage.removeItem('supabase_key');
-          window.location.reload();
-      }
   };
 
   const inputClasses = "block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent";
@@ -160,16 +141,9 @@ export const LoginPage: React.FC = () => {
             </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Bienvenido a Restaurante Pro</h1>
             <p className="mt-2 text-gray-600 dark:text-gray-400">Inicia sesión para continuar</p>
-            {isCloudMode ? (
-                <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                    <Database className="h-3 w-3" /> Modo Online (Supabase)
-                </div>
-            ) : (
-                <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-xs font-semibold">
-                    <WifiOff className="h-3 w-3" /> Modo Demo Local
-                </div>
-            )}
-            {!isCloudMode && <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">Hint: para la demo, la contraseña inicial es 'password' para todos.</p>}
+            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
+                <Database className="h-3 w-3" /> Modo Producción (Supabase)
+            </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -187,7 +161,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputClasses}
-                placeholder="admin@pizarra.es"
+                placeholder="admin@restaurante.com"
                 disabled={isLoading}
               />
             </div>
@@ -256,19 +230,6 @@ export const LoginPage: React.FC = () => {
             </button>
           </div>
         </form>
-        
-        {/* Emergency Switch for stuck users */}
-        {isCloudMode && (
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700 text-center">
-                <p className="text-xs text-gray-500 mb-2">¿Problemas para acceder a la base de datos?</p>
-                <button 
-                    onClick={handleResetToLocal}
-                    className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium"
-                >
-                    Desconectar y volver a Modo Demo
-                </button>
-            </div>
-        )}
       </div>
       {isForgotModalOpen && <ForgotPasswordModal onClose={() => setIsForgotModalOpen(false)} />}
     </div>

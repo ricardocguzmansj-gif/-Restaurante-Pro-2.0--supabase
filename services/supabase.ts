@@ -1,37 +1,47 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-export const DEFAULT_SUPABASE_URL = 'https://rlrnrnngfkzovxoocntp.supabase.co';
-
-const getSupabaseCredentials = () => {
-    let url = localStorage.getItem('supabase_url');
-    let key = localStorage.getItem('supabase_key');
-
-    // Try to get from env if not in local storage (safe check for browser env)
+// Helper to safely access env vars in various environments (Vite, Webpack, etc.)
+const getEnv = (key: string) => {
     try {
-        if (typeof process !== 'undefined' && process.env) {
-            if (!url) url = process.env.SUPABASE_URL || null;
-            if (!key) key = process.env.SUPABASE_KEY || null;
+        // Check import.meta.env (Vite)
+        if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+            return (import.meta as any).env[key];
         }
     } catch (e) {
-        // Ignore errors accessing process.env
+        // Ignore errors accessing import.meta
     }
 
-    // Fallback to hardcoded default for URL
-    if (!url) url = DEFAULT_SUPABASE_URL;
+    try {
+        // Check process.env (Standard Node/Webpack/CRA)
+        if (typeof process !== 'undefined' && process.env && process.env[key]) {
+            return process.env[key];
+        }
+    } catch (e) {
+        // Ignore errors accessing process
+    }
 
-    return { url, key };
+    return '';
 };
 
+// --- CREDENCIALES DE PRODUCCIÓN ---
+// Derivadas del JWT proporcionado:
+// Ref: rlrnrnngfkzovxoocntp
+// Url: https://rlrnrnngfkzovxoocntp.supabase.co
+const PROVIDED_URL = "https://rlrnrnngfkzovxoocntp.supabase.co";
+const PROVIDED_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJscm5ybm5nZmt6b3Z4b29jbnRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1ODkxMTIsImV4cCI6MjA3OTE2NTExMn0.G4iLMiRgy8tzA3bKj_ZKvB2Y30NLJpns3L8TZGdObX8";
+
+// Priorizamos variables de entorno, si no existen, usamos las proporcionadas hardcodeadas
+const supabaseUrl = getEnv('VITE_SUPABASE_URL') || PROVIDED_URL;
+const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY') || PROVIDED_ANON_KEY;
+
 export const isSupabaseConfigured = (): boolean => {
-    const { url, key } = getSupabaseCredentials();
-    return !!url && !!key;
+    return !!supabaseUrl && !!supabaseKey;
 };
 
 export const getSupabaseClient = () => {
-    const { url, key } = getSupabaseCredentials();
-    if (!url || !key) {
+    if (!supabaseUrl || !supabaseKey) {
+        console.error("Faltan las credenciales de Supabase. Verifique services/supabase.ts");
         return null;
     }
-    return createClient(url, key);
+    return createClient(supabaseUrl, supabaseKey);
 };

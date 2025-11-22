@@ -277,7 +277,7 @@ export const InventoryPage: React.FC = () => {
                                                 <span className={`font-bold ${isLowStock ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
                                                     {ing.stock_actual}
                                                 </span>
-                                                {isLowStock && <AlertTriangle className="h-4 w-4 text-red-500" title="Stock Bajo" />}
+                                                {isLowStock && <span title="Stock Bajo"><AlertTriangle className="h-4 w-4 text-red-500" /></span>}
                                             </div>
                                        </td>
                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ing.stock_minimo}</td>

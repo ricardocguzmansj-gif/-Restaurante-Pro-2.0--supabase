@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { User, Order, OrderStatus, MenuCategory, MenuItem, Customer, Coupon, Toast, OrderType, UserRole, PaymentDetails, Table, RestaurantSettings, TableStatus, Ingredient, RecipeItem, Restaurant } from '../types';
 import { api } from '../services/api';
 import { formatCurrency } from '../utils';
-import { isSupabaseConfigured, getSupabaseClient } from '../services/supabase';
+import { getSupabaseClient } from '../services/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface AppContextType {
@@ -85,11 +85,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [restaurantSettings, setRestaurantSettings] = useState<RestaurantSettings | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const prevOrdersRef = useRef<Order[]>([]);
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
 
-  // Determine if we are using Supabase
-  const isOnline = isSupabaseConfigured();
+  const isOnline = true; // Always true in production configuration
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
       const newToast: Toast = { id: Date.now(), message, type };
@@ -120,9 +118,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setRestaurantSettings(settingsData);
       setTables(tablesData);
       setIngredients(ingredientsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load initial data", error);
-      showToast("Error al cargar los datos. Verifica tu conexión.", "error");
+      showToast(`Error al conectar con la base de datos: ${error.message || 'Desconocido'}`, "error");
     } finally {
       setIsLoading(false);
     }
@@ -160,9 +158,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [currentRestaurantId, loadInitialData, user]);
 
-  // Setup Realtime Subscription for Orders (Supabase Mode)
+  // Setup Realtime Subscription for Orders
   useEffect(() => {
-    if (!isOnline || !currentRestaurantId) return;
+    if (!currentRestaurantId) return;
     
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -173,7 +171,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notificationSound.play().catch(e => console.warn("Sound play blocked:", e));
     };
 
-    // Clean up previous subscription
     if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
     }
@@ -203,52 +200,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => {
         if (subscriptionRef.current) supabase.removeChannel(subscriptionRef.current);
     };
-  }, [isOnline, currentRestaurantId, user, showToast]);
-
-
-  // Fallback Polling for Local Mode (legacy)
-  useEffect(() => {
-    if (isOnline || !user || !currentRestaurantId) return; 
-
-    const notificationSound = new Audio('https://cdn.pixabay.com/audio/2022/03/15/audio_2c244a341b.mp3');
-    notificationSound.volume = 0.5;
-
-    const playSound = () => {
-        notificationSound.play().catch(e => console.warn("Sound play blocked:", e));
-    };
-
-    const intervalId = setInterval(async () => {
-        const currentOrders = prevOrdersRef.current;
-        if (!currentOrders) return;
-        
-        const newOrders = await api.getOrders(currentRestaurantId);
-        
-        if (JSON.stringify(currentOrders) === JSON.stringify(newOrders)) {
-            return; 
-        }
-
-        // Logic for notifications same as before...
-         if ([UserRole.ADMIN, UserRole.GERENTE, UserRole.COCINA].includes(user.rol)) {
-            const currentNewOrderIds = new Set(currentOrders.filter(o => o.estado === OrderStatus.NUEVO).map(o => o.id));
-            const newlyArrivedOrders = newOrders.filter(o => o.estado === OrderStatus.NUEVO && !currentNewOrderIds.has(o.id));
-
-            if (newlyArrivedOrders.length > 0) {
-                showToast(`¡Nuevo pedido #${newlyArrivedOrders[0].id} en cocina!`, 'success');
-                playSound();
-            }
-        }
-        
-        setOrders(newOrders);
-
-    }, 5000); 
-
-    return () => clearInterval(intervalId);
-  }, [user, currentRestaurantId, showToast, isOnline]); 
-
-  // Keep prevOrders synced for polling logic
-  useEffect(() => {
-    prevOrdersRef.current = orders;
-  }, [orders]);
+  }, [currentRestaurantId, user, showToast]);
 
   const switchRestaurant = async (restaurantId: string) => {
       setCurrentRestaurantId(restaurantId);
@@ -269,7 +221,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     } catch (e: any) {
         console.error(e);
-        // Show specific message if available, critical for Supabase errors like recursion
         showToast(e.message || "Error de conexión al iniciar sesión", "error");
     }
   };
@@ -332,10 +283,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [allItemsForDisplay]);
 
 
-  // --- ACTIONS WRAPPERS (To handle async updates in UI optimistically or rely on fetch) ---
-  // For simplicity in this conversion, we rely on the API return values and state setters.
-  // The Realtime subscription will handle "other people's changes", 
-  // but for our own actions, updating state immediately makes UI snappier.
+  // --- ACTIONS WRAPPERS ---
 
   const updateOrderStatus = async (orderId: number, newStatus: OrderStatus) => {
     if (!currentRestaurantId) return;
@@ -368,7 +316,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             order.id === orderId ? updatedOrder : order
         ));
         
-        // Refresh related data that might have changed due to cancellation logic (stock, users)
         const [updatedIngredients, updatedUsers, updatedTables] = await Promise.all([
             api.getIngredients(currentRestaurantId),
             api.getUsers(currentRestaurantId),
@@ -420,7 +367,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!currentRestaurantId) return null;
     try {
       const newOrder = await api.createPublicOrder({ ...orderData, restaurant_id: currentRestaurantId });
-      // Don't update state here if not logged in, but for testing we might
       showToast(`Pedido #${newOrder.id} recibido. ¡Gracias!`);
       return newOrder;
     } catch (error) {
@@ -429,8 +375,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return null;
     }
   };
-
-  // ... (keep other CRUD methods similar, ensuring they update state)
 
    const createCustomer = async (customerData: Omit<Customer, 'id' | 'restaurant_id' | 'ltv' | 'ultima_compra' | 'frecuencia_promedio_dias' | 'is_verified'>): Promise<Customer | null> => {
     if (!currentRestaurantId) return null;
@@ -459,7 +403,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteCustomer = async (customerId: string) => {
     try {
       await api.deleteCustomer(customerId);
-      setCustomers(prev => prev.filter(c => c.id !== customerId)); // Or refetch if soft delete
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
       showToast(`Cliente desactivado.`);
     } catch (error) {
       showToast("Error al desactivar cliente", "error");
@@ -476,7 +420,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const assignRepartidor = async (id: number, repId: string) => {
       const updated = await api.assignRepartidorToOrder(id, repId);
       setOrders(prev => prev.map(o => o.id === id ? updated : o));
-      // Also refresh users to see status change
       if(currentRestaurantId) setUsers(await api.getUsers(currentRestaurantId));
   };
   const assignMozoToOrder = async (id: number, mozoId: string|null) => {
@@ -520,7 +463,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   const cleanTable = async (id: number) => {
       if(!currentRestaurantId) return;
-      // Optimistic update locally for table object in context
       const targetTable = tables.find(t => t.id === id);
       if(targetTable) {
           const updated = await api.updateTable({...targetTable, estado: TableStatus.LIBRE, order_id: null, mozo_id: null});
