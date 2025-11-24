@@ -2,9 +2,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
-import { Table, TableStatus, UserRole, OrderType, Sector, User } from '../types';
+import { Table, TableStatus, UserRole, OrderType, Sector, User, Order } from '../types';
 import { Card } from '../components/ui/Card';
-import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles, Trash2, RotateCcw, LayoutGrid, MousePointer2, Link as LinkIcon, Unlink } from 'lucide-react';
+import { formatCurrency, formatTimeAgo } from '../utils';
+import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles, Trash2, RotateCcw, LayoutGrid, MousePointer2, Link as LinkIcon, Unlink, Utensils, Receipt, DollarSign, Coffee } from 'lucide-react';
+import { PaymentModal, OrderEditorModal } from '../components/orders/SharedModals';
 
 interface DraggableTableProps {
     table: Table;
@@ -124,6 +126,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             <div className="flex flex-col items-center">
                 <span className="font-bold text-lg drop-shadow-md">{table.table_number}</span>
                 {isGrouped && <LinkIcon className="h-3 w-3 text-white drop-shadow-md" />}
+                {table.estado === TableStatus.PIDIENDO_CUENTA && <DollarSign className="h-4 w-4 text-white animate-bounce drop-shadow-md mt-1" />}
+                {table.estado === TableStatus.NECESITA_LIMPIEZA && <Sparkles className="h-4 w-4 text-white animate-pulse drop-shadow-md mt-1" />}
             </div>
             
             {isEditing && !isSelectionMode && (
@@ -149,147 +153,162 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     );
 };
 
-const TableActionButtons: React.FC<{ table: Table; onClose: () => void }> = ({ table, onClose }) => {
-    const { cleanTable, createOrder, user, updateTable, showToast, assignMozoToOrder, ungroupTable, users } = useAppContext();
-    const navigate = useNavigate();
-    const status = (table.estado || '').toUpperCase();
-    const [assigningWaiter, setAssigningWaiter] = useState(false);
+// --- Service Mode Modals ---
 
-    const waiters = users.filter(u => u.rol === UserRole.MOZO || u.rol === UserRole.ADMIN || u.rol === UserRole.GERENTE);
+const OpenTableModal: React.FC<{
+    table: Table;
+    onClose: () => void;
+    onOpen: (pax: number, customerId: string | null) => void;
+}> = ({ table, onClose, onOpen }) => {
+    const [pax, setPax] = useState(2);
+    const { customers } = useAppContext();
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
-    const handleAssign = async (userId: string) => {
-        await updateTable({ ...table, mozo_id: userId });
-        if (table.order_id) await assignMozoToOrder(table.order_id, userId);
-        showToast("Mozo asignado correctamente.");
-        setAssigningWaiter(false);
+    const handleConfirm = (e: React.FormEvent) => {
+        e.preventDefault();
+        onOpen(pax, selectedCustomerId || null);
     };
-
-    const handleSplit = async () => {
-        if (window.confirm("¿Estás seguro de separar esta mesa del grupo?")) {
-            await ungroupTable(table.id);
-            onClose();
-        }
-    };
-
-    if (status === 'LIBRE') {
-        const handleCreateOrder = async () => {
-            const newOrder = await createOrder({
-                customer_id: null, table_id: table.table_number, tipo: OrderType.SALA,
-                subtotal: 0, descuento: 0, impuestos: 0, propina: 0, total: 0, items: [],
-                restaurant_id: table.restaurant_id,
-            });
-            if (newOrder) { navigate(`/pedidos?orderId=${newOrder.id}`); }
-            onClose();
-        };
-        return (
-            <div className="space-y-3">
-                <button onClick={handleCreateOrder} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-md transition-all hover:scale-[1.02]">
-                    <ShoppingCart className="h-5 w-5" /> ABRIR MESA
-                </button>
-                {table.group_id && (
-                    <button onClick={handleSplit} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-purple-600 border border-purple-600 hover:bg-purple-50 rounded-lg">
-                        <Unlink className="h-5 w-5" /> SEPARAR MESA
-                    </button>
-                )}
-            </div>
-        );
-    }
-
-    if (status === 'OCUPADA' || status === 'PIDIENDO_CUENTA') {
-        const handleViewOrder = () => {
-            if (table.order_id) { navigate(`/pedidos?orderId=${table.order_id}`); onClose(); }
-            else { showToast("Error: La mesa figura ocupada pero no tiene ID de pedido.", "error"); }
-        };
-        
-        return (
-            <div className="space-y-3">
-                <button onClick={handleViewOrder} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg shadow-md transition-all hover:scale-[1.02]">
-                    <Eye className="h-5 w-5" /> VER PEDIDO ACTIVO
-                </button>
-                
-                {!assigningWaiter ? (
-                    <button onClick={() => setAssigningWaiter(true)} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all">
-                        <UserIcon className="h-5 w-5" /> {table.mozo_id ? 'Cambiar Mozo' : 'Asignar Mozo'}
-                    </button>
-                ) : (
-                    <div className="bg-gray-100 p-3 rounded-lg">
-                        <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Seleccionar Mozo</p>
-                        <div className="max-h-40 overflow-y-auto space-y-1">
-                            {waiters.map(w => (
-                                <button key={w.id} onClick={() => handleAssign(w.id)} className="w-full text-left px-3 py-2 text-sm bg-white hover:bg-blue-50 rounded border border-gray-200 flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                    {w.nombre}
-                                </button>
-                            ))}
-                        </div>
-                        <button onClick={() => setAssigningWaiter(false)} className="mt-2 w-full text-xs text-red-500 hover:underline">Cancelar</button>
-                    </div>
-                )}
-
-                {table.group_id && (
-                    <button onClick={handleSplit} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-purple-600 border border-purple-600 hover:bg-purple-50 rounded-lg">
-                        <Unlink className="h-5 w-5" /> SEPARAR MESA
-                    </button>
-                )}
-            </div>
-        );
-    }
-
-    if (status === 'NECESITA_LIMPIEZA') {
-        const handleCleanTable = async () => { await cleanTable(table.id); onClose(); };
-        return (
-            <button onClick={handleCleanTable} className="w-full flex items-center justify-center gap-3 px-4 py-3 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md animate-pulse transition-all hover:scale-[1.02]">
-                <Sparkles className="h-5 w-5" /> MARCAR LIMPIA Y LIBERAR
-            </button>
-        );
-    }
-    return <div className="text-center text-gray-500">Estado desconocido: {status}</div>;
-};
-
-const TableDetailsModal: React.FC<{ table: Table; onClose: () => void; }> = ({ table, onClose }) => {
-    const { users } = useAppContext();
-    const mozo = users.find(u => u.id === table.mozo_id);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-2">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Abrir Mesa {table.table_number}</h3>
+                    <button onClick={onClose}><X className="h-5 w-5 text-gray-500" /></button>
+                </div>
+                <form onSubmit={handleConfirm} className="space-y-4">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-800 dark:text-white">{table.nombre}</h2>
-                        {table.group_id && <span className="text-xs text-purple-600 font-bold flex items-center gap-1"><LinkIcon className="h-3 w-3"/> Mesa Unida</span>}
-                    </div>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"><X className="h-5 w-5 text-gray-500" /></button>
-                </div>
-                <div className="p-6 space-y-6">
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border dark:border-gray-600">
-                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Estado Actual</span>
-                            <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full border bg-gray-100 text-gray-800`}>{table.estado.replace('_', ' ')}</span>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comensales (Pax)</label>
+                        <div className="flex items-center gap-3">
+                            <button type="button" onClick={() => setPax(Math.max(1, pax - 1))} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full"><X className="h-4 w-4 rotate-45" /></button> {/* Using X rotated as Minus because lucide Minus conflicts if imported twice */}
+                            <span className="text-2xl font-bold w-12 text-center dark:text-white">{pax}</span>
+                            <button type="button" onClick={() => setPax(pax + 1)} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full"><PlusCircle className="h-4 w-4" /></button>
                         </div>
-                        {mozo && (
-                            <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border dark:border-gray-600">
-                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Mozo Asignado</span>
-                                <span className="font-semibold text-gray-800 dark:text-white">{mozo.nombre}</span>
-                            </div>
-                        )}
                     </div>
-                    <div className="pt-2">
-                        <TableActionButtons table={table} onClose={onClose} />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente (Opcional)</label>
+                        <select 
+                            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            value={selectedCustomerId}
+                            onChange={(e) => setSelectedCustomerId(e.target.value)}
+                        >
+                            <option value="">Cliente Casual</option>
+                            {customers.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
                     </div>
-                </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 rounded">Cancelar</button>
+                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold">Abrir Mesa</button>
+                    </div>
+                </form>
             </div>
         </div>
     );
 };
 
+const TableServiceModal: React.FC<{
+    table: Table;
+    order: Order | undefined;
+    onClose: () => void;
+    onEditOrder: () => void;
+    onPay: () => void;
+    onRequestBill: () => void;
+    onClean: () => void;
+    onViewBill: () => void; // Not used in this version but kept for extensibility
+}> = ({ table, order, onClose, onEditOrder, onPay, onRequestBill, onClean }) => {
+    
+    if (!order) return null; // Should generally not happen if status is occupied
+
+    const isPaid = order.total > 0 && (order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0) >= order.total;
+    const status = table.estado;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-orange-600 p-4 text-white flex justify-between items-center">
+                    <div>
+                        <h2 className="text-2xl font-bold">Mesa {table.table_number}</h2>
+                        <p className="text-sm opacity-90 flex items-center gap-2">
+                            Orden #{order.id} &bull; {formatTimeAgo(order.creado_en)}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="bg-white/20 p-1 rounded-full hover:bg-white/30"><X className="h-5 w-5"/></button>
+                </div>
+                
+                <div className="p-6 grid grid-cols-2 gap-4">
+                    {/* Main Actions */}
+                    <button 
+                        onClick={() => { onClose(); onEditOrder(); }}
+                        className="col-span-2 py-4 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
+                    >
+                        <Utensils className="h-8 w-8" />
+                        <span className="font-bold">Agregar Ítems / Comanda</span>
+                    </button>
+
+                    <button 
+                        onClick={() => { onRequestBill(); onClose(); }}
+                        disabled={status === TableStatus.PIDIENDO_CUENTA || isPaid}
+                        className="py-4 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-50"
+                    >
+                        <Receipt className="h-6 w-6" />
+                        <span className="font-semibold">Pre-cuenta</span>
+                    </button>
+
+                    <button 
+                        onClick={() => { onClose(); onPay(); }}
+                        className="py-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-green-100 dark:hover:bg-green-900/40"
+                    >
+                        <DollarSign className="h-6 w-6" />
+                        <span className="font-semibold">Cobrar</span>
+                    </button>
+                </div>
+
+                <div className="px-6 pb-6">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg flex justify-between items-center mb-4">
+                        <span className="text-gray-500 dark:text-gray-400">Total Consumo</span>
+                        <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(order.total)}</span>
+                    </div>
+
+                    {isPaid ? (
+                        <button 
+                            onClick={() => { onClean(); onClose(); }}
+                            className="w-full py-3 bg-gray-800 dark:bg-gray-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-gray-700"
+                        >
+                            <Sparkles className="h-5 w-5 text-yellow-400" /> Liberar Mesa
+                        </button>
+                    ) : (
+                        <div className="text-center text-xs text-gray-400">
+                            La mesa debe estar pagada para liberarse automáticamente.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export const FloorPlanPage: React.FC = () => {
-    const { tables, sectors, user, saveTableLayout, showToast, currentRestaurantId, deleteTable, createSector, deleteSector, joinTables } = useAppContext();
+    const { 
+        tables, sectors, user, saveTableLayout, showToast, currentRestaurantId, 
+        deleteTable, createSector, deleteSector, joinTables, orders, 
+        createOrder, updateTable, cleanTable, ungroupTable
+    } = useAppContext();
+
     const [isEditing, setIsEditing] = useState(false);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedTableIds, setSelectedTableIds] = useState<Set<string | number>>(new Set());
     
     const [localTables, setLocalTables] = useState<Table[]>([]);
-    const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    
+    // Modals State
+    const [selectedTable, setSelectedTable] = useState<Table | null>(null); // For details view
+    const [openTableModal, setOpenTableModal] = useState<Table | null>(null);
+    const [serviceModalTable, setServiceModalTable] = useState<Table | null>(null);
+    
+    // Shared Modals State (imported logic)
+    const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+    const [payingOrder, setPayingOrder] = useState<Order | null>(null);
+
     const [deletedTableIds, setDeletedTableIds] = useState<Set<number | string>>(new Set());
     const [activeSectorId, setActiveSectorId] = useState<string>('all');
     const [isCreatingSector, setIsCreatingSector] = useState(false);
@@ -317,6 +336,64 @@ export const FloorPlanPage: React.FC = () => {
         return localTables.filter(t => activeSectorId === 'all' || t.sector_id === activeSectorId || (!t.sector_id && activeSectorId === 'default'));
     }, [localTables, activeSectorId]);
 
+    // --- Handlers ---
+
+    const handleTableClick = (table: Table) => {
+        if (isEditing) return; // Drag logic handles selection/edit
+
+        if (isSelectionMode) {
+            const newSet = new Set(selectedTableIds);
+            if (newSet.has(table.id)) newSet.delete(table.id);
+            else newSet.add(table.id);
+            setSelectedTableIds(newSet);
+            return;
+        }
+
+        // SERVICE MODE LOGIC
+        if (table.estado === TableStatus.LIBRE) {
+            setOpenTableModal(table);
+        } else if (table.estado === TableStatus.NECESITA_LIMPIEZA) {
+            if (window.confirm(`¿Marcar Mesa ${table.table_number} como limpia y libre?`)) {
+                cleanTable(table.id);
+            }
+        } else {
+            // Occupied or Asking Bill
+            setServiceModalTable(table);
+        }
+    };
+
+    const handleOpenTable = async (pax: number, customerId: string | null) => {
+        if (!openTableModal || !currentRestaurantId) return;
+        try {
+            // 1. Create Order
+            const newOrder = await createOrder({
+                customer_id: customerId,
+                table_id: openTableModal.table_number,
+                tipo: OrderType.SALA,
+                subtotal: 0, descuento: 0, impuestos: 0, propina: 0, total: 0, 
+                items: [],
+                restaurant_id: currentRestaurantId,
+                mozo_id: user?.rol === UserRole.MOZO ? user.id : null // Auto assign if waiter
+            });
+
+            if (newOrder) {
+                setOpenTableModal(null);
+                // 2. Immediate Edit (First Round)
+                setEditingOrder(newOrder);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Error al abrir mesa", "error");
+        }
+    };
+
+    const handleRequestBill = async (table: Table) => {
+        if (!table) return;
+        await updateTable({ ...table, estado: TableStatus.PIDIENDO_CUENTA });
+        showToast(`Mesa ${table.table_number} solicitó la cuenta (Pre-cuenta generada).`);
+    };
+
+    // --- Editor Handlers (Same as before) ---
     const handleEnterEditMode = () => {
         setLocalTables(JSON.parse(JSON.stringify(tables)));
         setDeletedTableIds(new Set());
@@ -405,21 +482,9 @@ export const FloorPlanPage: React.FC = () => {
         }
     };
 
-    // --- Selection Logic ---
     const toggleSelectionMode = () => {
         setIsSelectionMode(!isSelectionMode);
         setSelectedTableIds(new Set());
-    };
-
-    const handleTableClick = (table: Table) => {
-        if (isSelectionMode) {
-            const newSet = new Set(selectedTableIds);
-            if (newSet.has(table.id)) newSet.delete(table.id);
-            else newSet.add(table.id);
-            setSelectedTableIds(newSet);
-        } else {
-            setSelectedTable(table);
-        }
     };
 
     const handleJoinTables = async () => {
@@ -443,15 +508,16 @@ export const FloorPlanPage: React.FC = () => {
         <div className="space-y-6 h-full flex flex-col">
             <div className="flex flex-wrap justify-between items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <LayoutGrid className="h-6 w-6 text-orange-500" /> Plano
+                    <LayoutGrid className="h-6 w-6 text-orange-500" /> Plano de Salón
                 </h1>
                 
                 <div className="flex items-center gap-2">
                     <button 
                         onClick={toggleSelectionMode}
-                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${isSelectionMode ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-white'}`}
+                        disabled={isEditing}
+                        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${isSelectionMode ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-white'} ${isEditing ? 'opacity-50' : ''}`}
                     >
-                        <MousePointer2 className="h-4 w-4" /> {isSelectionMode ? 'Cancelar Selección' : 'Seleccionar'}
+                        <MousePointer2 className="h-4 w-4" /> {isSelectionMode ? 'Cancelar' : 'Seleccionar'}
                     </button>
 
                     {canEdit && (
@@ -574,7 +640,49 @@ export const FloorPlanPage: React.FC = () => {
                 )}
             </Card>
 
-            {selectedTable && <TableDetailsModal table={selectedTable} onClose={() => setSelectedTable(null)} />}
+            {/* --- MODALS --- */}
+            
+            {openTableModal && (
+                <OpenTableModal 
+                    table={openTableModal} 
+                    onClose={() => setOpenTableModal(null)} 
+                    onOpen={handleOpenTable}
+                />
+            )}
+
+            {serviceModalTable && (
+                <TableServiceModal 
+                    table={serviceModalTable}
+                    order={orders.find(o => o.id === serviceModalTable.order_id)}
+                    onClose={() => setServiceModalTable(null)}
+                    onEditOrder={() => {
+                        const ord = orders.find(o => o.id === serviceModalTable.order_id);
+                        if(ord) setEditingOrder(ord);
+                    }}
+                    onPay={() => {
+                        const ord = orders.find(o => o.id === serviceModalTable.order_id);
+                        if(ord) setPayingOrder(ord);
+                    }}
+                    onRequestBill={() => handleRequestBill(serviceModalTable)}
+                    onClean={() => cleanTable(serviceModalTable.id)}
+                    onViewBill={() => {}}
+                />
+            )}
+
+            {editingOrder && (
+                <OrderEditorModal 
+                    order={editingOrder} 
+                    onClose={() => setEditingOrder(null)} 
+                />
+            )}
+
+            {payingOrder && (
+                <PaymentModal 
+                    order={payingOrder} 
+                    onClose={() => setPayingOrder(null)} 
+                    onPaymentSuccess={() => {}} 
+                />
+            )}
         </div>
     );
 };

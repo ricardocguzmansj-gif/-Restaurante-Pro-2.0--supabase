@@ -1,151 +1,18 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
-import { Order, OrderStatus, OrderType, UserRole, MenuItem, PaymentDetails, OrderItem } from '../types';
-import { formatCurrency, formatDate, formatTimeAgo } from '../utils';
+import { Order, OrderStatus, OrderType, UserRole } from '../types';
+import { formatCurrency, formatTimeAgo } from '../utils';
 import { ORDER_STATUS_COLORS, ORDER_TYPE_ICONS } from '../constants';
 import { 
     PlusCircle, Search, DollarSign, Ban, 
-    CreditCard, Banknote, X, Edit, Minus, Plus, User as UserIcon,
-    AlertTriangle, History, FileText, Bike, QrCode, CheckCircle
+    X, User as UserIcon,
+    History, FileText, Bike, CheckCircle, AlertTriangle, Edit
 } from 'lucide-react';
+import { PaymentModal, OrderEditorModal, OrderDetailsModal, CancelConfirmModal } from '../components/orders/SharedModals';
 
-// ... [PaymentModal, CancelConfirmModal, CollectionsHistoryModal, OrderEditorModal, OrderDetailsModal remain exactly the same as previous file content, reusing them for brevity] ... 
-// NOTE: In a real refactor, I would keep them. I am pasting the full file content to ensure no code loss, but using '...' for the parts that don't change significantly in logic is hard in XML.
-// I will re-include the helper components to be safe.
-
-const PaymentModal: React.FC<{
-    order: Order;
-    onClose: () => void;
-    onPaymentSuccess: () => void;
-}> = ({ order, onClose, onPaymentSuccess }) => {
-    const { addPaymentToOrder, generatePaymentQR, showToast } = useAppContext();
-    const [amount, setAmount] = useState(order.total - (order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0));
-    const [method, setMethod] = useState<PaymentDetails['method']>('EFECTIVO');
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [qrUrl, setQrUrl] = useState<string | null>(null);
-
-    const handleGenerateQR = async () => {
-        setIsProcessing(true);
-        try {
-            const url = await generatePaymentQR(order.id, amount);
-            if(url) setQrUrl(url);
-        } catch (e) {
-            console.error(e);
-            showToast("Error generando QR", "error");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleSubmit = async () => {
-        setIsProcessing(true);
-        try {
-            await addPaymentToOrder(order.id, method, amount);
-            showToast("Pago registrado correctamente.");
-            onPaymentSuccess();
-            onClose();
-        } catch (e) {
-            console.error(e);
-            showToast("Error al registrar pago", "error");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-semibold text-lg">Registrar Pago - Pedido #{order.id}</h3>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="h-4 w-4" /></button>
-                </div>
-                <div className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Monto a Pagar</label>
-                        <input 
-                            type="number" 
-                            value={amount} 
-                            onChange={(e) => setAmount(parseFloat(e.target.value))} 
-                            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Método de Pago</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {['EFECTIVO', 'TARJETA', 'MERCADOPAGO', 'QR'].map(m => (
-                                <button 
-                                    key={m}
-                                    onClick={() => { setMethod(m as any); setQrUrl(null); }}
-                                    className={`p-2 text-sm border rounded flex items-center justify-center gap-2 ${method === m ? 'bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
-                                >
-                                    {m === 'EFECTIVO' && <Banknote className="h-4 w-4"/>}
-                                    {m === 'TARJETA' && <CreditCard className="h-4 w-4"/>}
-                                    {m === 'QR' && <QrCode className="h-4 w-4"/>}
-                                    {m}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {method === 'QR' && (
-                        <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                            {!qrUrl ? (
-                                <button onClick={handleGenerateQR} disabled={isProcessing} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                                    Generar QR
-                                </button>
-                            ) : (
-                                <div className="flex flex-col items-center">
-                                    <img src={qrUrl} alt="QR Pago" className="w-48 h-48" />
-                                    <p className="text-xs text-gray-500 mt-2">Escanea para pagar</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-                <div className="p-4 border-t dark:border-gray-700 flex justify-end gap-2">
-                    <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Cancelar</button>
-                    <button onClick={handleSubmit} disabled={isProcessing} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50">
-                        Confirmar Pago
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const CancelConfirmModal: React.FC<{
-    order: Order;
-    onClose: () => void;
-    onConfirm: () => void;
-}> = ({ order, onClose, onConfirm }) => {
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-                <div className="p-6 text-center">
-                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                        <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                    </div>
-                    <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-white">Cancelar Pedido #{order.id}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        ¿Estás seguro de que deseas cancelar este pedido? Esta acción no se puede deshacer y afectará al inventario si ya estaba en preparación.
-                    </p>
-                    <div className="flex gap-4">
-                        <button onClick={onClose} className="w-full py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium">
-                            Volver
-                        </button>
-                        <button onClick={onConfirm} className="w-full py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-sm">
-                            Sí, Cancelar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
+// Keep CollectionsHistoryModal local as it's specific to this page
 const CollectionsHistoryModal: React.FC<{
     onClose: () => void;
 }> = ({ onClose }) => {
@@ -193,19 +60,19 @@ const CollectionsHistoryModal: React.FC<{
     const totalsByMethod = useMemo(() => {
         return filteredPayments.reduce((acc: Record<string, number>, curr) => {
             const method = String(curr.method);
-            const currentTotal = Number(acc[method]) || 0;
+            const currentTotal = acc[method] || 0;
             acc[method] = currentTotal + curr.amount;
             return acc;
         }, {} as Record<string, number>);
     }, [filteredPayments]);
 
-    const totalCollected = (Object.values(totalsByMethod) as number[]).reduce((acc, curr) => acc + curr, 0);
+    const totalCollected = Object.values(totalsByMethod).reduce((acc, curr) => acc + (curr as number), 0);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900 dark:text-white">
                         <History className="h-5 w-5 text-orange-500" />
                         Historial de Cobranzas
                     </h3>
@@ -216,12 +83,12 @@ const CollectionsHistoryModal: React.FC<{
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <Card className="p-3 bg-white dark:bg-gray-800 border-l-4 border-green-500">
                             <p className="text-xs text-gray-500 uppercase">Total Recaudado</p>
-                            <p className="text-xl font-bold">{formatCurrency(totalCollected)}</p>
+                            <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalCollected)}</p>
                         </Card>
                         {Object.entries(totalsByMethod).map(([method, amount]) => (
                             <Card key={method} className="p-3 bg-white dark:bg-gray-800">
                                 <p className="text-xs text-gray-500 uppercase">{method}</p>
-                                <p className="text-lg font-semibold">{formatCurrency(amount)}</p>
+                                <p className="text-lg font-semibold text-gray-900 dark:text-white">{formatCurrency(amount)}</p>
                             </Card>
                         ))}
                     </div>
@@ -232,7 +99,7 @@ const CollectionsHistoryModal: React.FC<{
                             placeholder="Buscar por Pedido, Mozo o Método..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600"
+                            className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                         />
                     </div>
                 </div>
@@ -253,13 +120,13 @@ const CollectionsHistoryModal: React.FC<{
                                 <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                         <div className="flex flex-col">
-                                            <span>{formatDate(payment.paymentDate)}</span>
+                                            <span>{new Date(payment.paymentDate).toLocaleDateString()}</span>
                                             <span className="text-xs opacity-70">{new Date(payment.paymentDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">#{payment.orderId}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">#{payment.orderId}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold">
+                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold text-gray-800 dark:text-gray-200">
                                             {payment.method}
                                         </span>
                                     </td>
@@ -286,305 +153,6 @@ const CollectionsHistoryModal: React.FC<{
     );
 };
 
-const OrderEditorModal: React.FC<{
-    order: Order;
-    onClose: () => void;
-}> = ({ order, onClose }) => {
-    const { processedMenuItems, categories, updateOrder, showToast, users } = useAppContext();
-    const [localItems, setLocalItems] = useState<OrderItem[]>(order.items || []);
-    const [activeCategory, setActiveCategory] = useState<string>('all');
-    const [searchTerm, setSearchTerm] = useState('');
-    
-    const [assignedStaffId, setAssignedStaffId] = useState<string>('');
-
-    useEffect(() => {
-        if (order.tipo === OrderType.SALA && order.mozo_id) {
-            setAssignedStaffId(order.mozo_id);
-        } else if (order.tipo === OrderType.DELIVERY && order.repartidor_id) {
-            setAssignedStaffId(order.repartidor_id);
-        }
-    }, [order]);
-
-    const availableStaff = useMemo(() => {
-        if (order.tipo === OrderType.SALA) {
-            return users.filter(u => u.rol === UserRole.MOZO);
-        } else if (order.tipo === OrderType.DELIVERY) {
-            return users.filter(u => u.rol === UserRole.REPARTO && u.estado_delivery === 'DISPONIBLE');
-        }
-        return [];
-    }, [users, order.tipo]);
-
-    const filteredItems = useMemo(() => {
-        let items = processedMenuItems.filter(i => i.disponible && !i.is_deleted);
-        if (activeCategory !== 'all') {
-             items = items.filter(i => i.category_id === activeCategory);
-        }
-        if (searchTerm) {
-            items = items.filter(i => i.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
-        }
-        return items;
-    }, [processedMenuItems, activeCategory, searchTerm]);
-
-    const handleAddItem = (menuItem: MenuItem) => {
-        setLocalItems(prev => {
-            const existing = prev.find(i => i.menu_item_id === menuItem.id);
-            if (existing) {
-                return prev.map(i => i.menu_item_id === menuItem.id ? { 
-                    ...i, 
-                    cantidad: i.cantidad + 1, 
-                    total_item: (i.cantidad + 1) * i.precio_unitario 
-                } : i);
-            }
-            return [...prev, {
-                id: `new-${Date.now()}-${Math.random()}`,
-                menu_item_id: menuItem.id,
-                nombre_item_snapshot: menuItem.nombre,
-                precio_unitario: menuItem.precio_base,
-                cantidad: 1,
-                total_item: menuItem.precio_base,
-                notes: ''
-            }];
-        });
-    };
-
-    const handleUpdateQuantity = (idx: number, delta: number) => {
-        setLocalItems(prev => {
-            const newItems = [...prev];
-            const item = newItems[idx];
-            const newQty = item.cantidad + delta;
-            if (newQty <= 0) {
-                newItems.splice(idx, 1);
-            } else {
-                newItems[idx] = { ...item, cantidad: newQty, total_item: newQty * item.precio_unitario };
-            }
-            return newItems;
-        });
-    };
-
-    const handleSave = async () => {
-        const subtotal = localItems.reduce((acc, item) => acc + item.total_item, 0);
-        const total = subtotal;
-
-        try {
-            const updatePayload: any = {
-                items: localItems,
-                subtotal,
-                total
-            };
-
-            if (order.tipo === OrderType.SALA) {
-                updatePayload.mozo_id = assignedStaffId || null;
-            } else if (order.tipo === OrderType.DELIVERY) {
-                updatePayload.repartidor_id = assignedStaffId || null;
-            }
-
-            await updateOrder(order.id, updatePayload);
-            showToast("Pedido actualizado.");
-            onClose();
-        } catch (e) {
-            console.error(e);
-            showToast("Error al actualizar pedido.", "error");
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[85vh] flex overflow-hidden" onClick={e => e.stopPropagation()}>
-                <div className="w-2/3 flex flex-col border-r dark:border-gray-700">
-                    <div className="p-4 border-b dark:border-gray-700">
-                        <input 
-                            type="text" 
-                            placeholder="Buscar producto..." 
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                        />
-                        <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
-                             <button onClick={() => setActiveCategory('all')} className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${activeCategory === 'all' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'}`}>Todos</button>
-                             {categories.map(c => (
-                                 <button key={c.id} onClick={() => setActiveCategory(c.id)} className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium ${activeCategory === c.id ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'}`}>{c.nombre}</button>
-                             ))}
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-4 content-start">
-                        {filteredItems.map(item => (
-                            <div key={item.id} onClick={() => handleAddItem(item)} className="cursor-pointer border dark:border-gray-700 rounded-lg p-3 hover:shadow-md transition-shadow bg-white dark:bg-gray-700">
-                                <p className="font-medium text-sm line-clamp-2">{item.nombre}</p>
-                                <p className="text-orange-600 font-bold text-sm mt-1">{formatCurrency(item.precio_base)}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="w-1/3 flex flex-col bg-gray-50 dark:bg-gray-900/50">
-                    <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                        <h3 className="font-bold">Pedido #{order.id}</h3>
-                        <button onClick={onClose}><X className="h-5 w-5 text-gray-500"/></button>
-                    </div>
-                    
-                    {(order.tipo === OrderType.SALA || order.tipo === OrderType.DELIVERY) && (
-                        <div className="px-4 pt-4">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                {order.tipo === OrderType.SALA ? 'Asignar Mozo' : 'Asignar Repartidor (Disponible)'}
-                            </label>
-                            <div className="relative">
-                                <select 
-                                    value={assignedStaffId} 
-                                    onChange={(e) => setAssignedStaffId(e.target.value)}
-                                    className="w-full p-2 pl-8 border rounded text-sm dark:bg-gray-700 dark:border-gray-600"
-                                >
-                                    <option value="">-- Seleccionar --</option>
-                                    {availableStaff.map(u => (
-                                        <option key={u.id} value={u.id}>{u.nombre}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute left-2 top-2.5 text-gray-400">
-                                    {order.tipo === OrderType.DELIVERY ? <Bike className="h-4 w-4"/> : <UserIcon className="h-4 w-4"/>}
-                                </div>
-                            </div>
-                            {order.tipo === OrderType.DELIVERY && availableStaff.length === 0 && (
-                                <p className="text-xs text-red-500 mt-1">No hay repartidores disponibles.</p>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                        {localItems.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded shadow-sm">
-                                <div className="flex-1 min-w-0 mr-2">
-                                    <p className="text-sm font-medium truncate">{item.nombre_item_snapshot}</p>
-                                    <p className="text-xs text-gray-500">{formatCurrency(item.total_item)}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => handleUpdateQuantity(idx, -1)} className="p-1 bg-gray-200 rounded hover:bg-gray-300 text-gray-700"><Minus className="h-3 w-3"/></button>
-                                    <span className="text-sm font-bold w-4 text-center">{item.cantidad}</span>
-                                    <button onClick={() => handleUpdateQuantity(idx, 1)} className="p-1 bg-gray-200 rounded hover:bg-gray-300 text-gray-700"><Plus className="h-3 w-3"/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-4 border-t dark:border-gray-700 bg-white dark:bg-gray-800">
-                        <div className="flex justify-between text-lg font-bold mb-4">
-                            <span>Total</span>
-                            <span>{formatCurrency(localItems.reduce((acc, i) => acc + i.total_item, 0))}</span>
-                        </div>
-                        <button onClick={handleSave} className="w-full py-2 bg-orange-500 text-white rounded font-semibold hover:bg-orange-600">
-                            Guardar Cambios
-                        </button>
-                    </div>
-                </div>
-             </div>
-        </div>
-    );
-};
-
-const OrderDetailsModal: React.FC<{
-    order: Order;
-    onClose: () => void;
-    onEdit: () => void;
-    onPay: () => void;
-}> = ({ order, onClose, onEdit, onPay }) => {
-    const { customers, updateOrderStatus, user } = useAppContext();
-    const customer = customers.find(c => c.id === order.customer_id);
-    const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol);
-
-    const isEntregado = order.estado === OrderStatus.ENTREGADO;
-
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                 <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                    <div>
-                        <h3 className="font-bold text-xl flex items-center gap-2">
-                            Pedido #{order.id}
-                            <span className={`text-xs px-2 py-1 rounded-full text-white ${ORDER_STATUS_COLORS[order.estado]}`}>{order.estado}</span>
-                        </h3>
-                        <p className="text-xs text-gray-500">{formatDate(order.creado_en)} - {formatTimeAgo(order.creado_en)}</p>
-                    </div>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="h-5 w-5" /></button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg">
-                         <div>
-                             <h4 className="text-sm font-semibold text-gray-500 uppercase">Cliente</h4>
-                             <p className="font-medium">{customer?.nombre || 'Consumidor Final'}</p>
-                             {customer && <p className="text-sm text-gray-600">{customer.telefono}</p>}
-                         </div>
-                         <div>
-                             <h4 className="text-sm font-semibold text-gray-500 uppercase">Tipo / Mesa</h4>
-                             <div className="flex items-center gap-2">
-                                 {React.createElement(ORDER_TYPE_ICONS[order.tipo], { className: "h-4 w-4" })}
-                                 <span>{order.tipo}</span>
-                                 {order.table_id && <span className="bg-gray-200 dark:bg-gray-600 px-2 rounded text-xs">Mesa {order.table_id}</span>}
-                             </div>
-                         </div>
-                         {order.tipo === OrderType.DELIVERY && customer?.direccion && (
-                             <div className="col-span-2">
-                                 <h4 className="text-sm font-semibold text-gray-500 uppercase">Dirección de Entrega</h4>
-                                 <p className="text-sm">{customer.direccion.calle}, {customer.direccion.ciudad}</p>
-                             </div>
-                         )}
-                    </div>
-
-                    <div>
-                        <h4 className="font-semibold mb-2">Items</h4>
-                        <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-100 dark:bg-gray-700">
-                                    <tr>
-                                        <th className="p-2 text-left">Cant</th>
-                                        <th className="p-2 text-left">Producto</th>
-                                        <th className="p-2 text-right">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {order.items.map((item, idx) => (
-                                        <tr key={idx} className="border-t dark:border-gray-700">
-                                            <td className="p-2 w-16 text-center font-medium">{item.cantidad}</td>
-                                            <td className="p-2">
-                                                <div>{item.nombre_item_snapshot}</div>
-                                                {item.notes && <div className="text-xs text-orange-600 italic">{item.notes}</div>}
-                                            </td>
-                                            <td className="p-2 text-right">{formatCurrency(item.total_item)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                        <div className="w-48 space-y-1">
-                            <div className="flex justify-between text-sm"><span>Subtotal:</span> <span>{formatCurrency(order.subtotal)}</span></div>
-                            <div className="flex justify-between text-sm"><span>Impuestos:</span> <span>{formatCurrency(order.impuestos)}</span></div>
-                            <div className="flex justify-between text-lg font-bold border-t pt-1 mt-1"><span>Total:</span> <span>{formatCurrency(order.total)}</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-wrap gap-2 justify-end">
-                    {order.estado !== OrderStatus.CANCELADO && !isEntregado && canEdit && (
-                         <button onClick={onEdit} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 flex items-center gap-2">
-                             <Edit className="h-4 w-4" /> Editar
-                         </button>
-                    )}
-                    {order.estado !== OrderStatus.CANCELADO && !isEntregado && (
-                        <button onClick={() => updateOrderStatus(order.id, OrderStatus.ENTREGADO)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            Marcar Entregado
-                        </button>
-                    )}
-                    {(order.estado === OrderStatus.PENDIENTE_PAGO || (order.estado === OrderStatus.ENTREGADO && (order.payments?.reduce((a: number, b: any) => a + (Number(b.amount) || 0), 0) || 0) < order.total)) && (
-                        <button onClick={onPay} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                            <DollarSign className="h-4 w-4" /> Pagar
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 export const OrdersPage: React.FC = () => {
     const { orders, user, cancelOrder, customers, createOrder, users, updateOrderStatus } = useAppContext();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -604,7 +172,6 @@ export const OrdersPage: React.FC = () => {
     const customersMap = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
     const usersMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
-    // Identify Pending Payment orders (e.g., from web/online)
     const pendingOrders = useMemo(() => 
         orders.filter(o => o.estado === OrderStatus.PENDIENTE_PAGO).sort((a,b) => a.id - b.id),
     [orders]);
@@ -689,7 +256,6 @@ export const OrdersPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* SECCIÓN DE PEDIDOS ENTRANTES (WEB/PENDIENTES) */}
             {pendingOrders.length > 0 && (
                 <Card className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500">
                     <h2 className="text-lg font-bold text-purple-800 dark:text-purple-200 mb-3 flex items-center gap-2">
@@ -701,25 +267,24 @@ export const OrdersPage: React.FC = () => {
                             return (
                                 <div key={order.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border dark:border-gray-700 flex flex-col">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="font-bold">#{order.id}</span>
-                                        <span className="text-xs bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded">{formatTimeAgo(order.creado_en)}</span>
+                                        <span className="font-bold text-gray-900 dark:text-white">#{order.id}</span>
+                                        <span className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded">{formatTimeAgo(order.creado_en)}</span>
                                     </div>
                                     <div className="flex-1">
-                                        <p className="font-medium text-sm">{customer?.nombre || 'Cliente Web'}</p>
+                                        <p className="font-medium text-sm text-gray-900 dark:text-white">{customer?.nombre || 'Cliente Web'}</p>
                                         <p className="text-xs text-gray-500">{order.tipo}</p>
-                                        <p className="font-bold text-lg mt-1">{formatCurrency(order.total)}</p>
+                                        <p className="font-bold text-lg mt-1 text-gray-900 dark:text-white">{formatCurrency(order.total)}</p>
                                     </div>
                                     <div className="flex gap-2 mt-3">
                                         <button 
                                             onClick={() => setViewingOrder(order)}
-                                            className="flex-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold rounded"
+                                            className="flex-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold rounded text-gray-700 dark:text-gray-200"
                                         >
                                             Ver Detalle
                                         </button>
                                         <button 
                                             onClick={() => {
                                                 updateOrderStatus(order.id, OrderStatus.NUEVO);
-                                                // Optional: Play sound or show toast
                                             }}
                                             className="flex-1 px-2 py-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded flex items-center justify-center gap-1"
                                         >
@@ -742,13 +307,13 @@ export const OrdersPage: React.FC = () => {
                             placeholder="Buscar por ID o Cliente..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+                            className="w-full pl-9 pr-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                         />
                     </div>
                     <select 
                         value={statusFilter} 
                         onChange={(e) => setStatusFilter(e.target.value as any)}
-                        className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+                        className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     >
                         <option value="TODOS">Todos los Estados</option>
                         {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
@@ -756,7 +321,7 @@ export const OrdersPage: React.FC = () => {
                     <select 
                         value={typeFilter} 
                         onChange={(e) => setTypeFilter(e.target.value as any)}
-                        className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+                        className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     >
                         <option value="TODOS">Todos los Tipos</option>
                         {Object.values(OrderType).map(t => <option key={t} value={t}>{t}</option>)}
@@ -767,14 +332,14 @@ export const OrdersPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700/50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente / Mesa</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responsable</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Cliente / Mesa</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Responsable</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Hora</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -873,9 +438,9 @@ export const OrdersPage: React.FC = () => {
 
                 {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4 border-t dark:border-gray-700 pt-4">
-                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 border rounded disabled:opacity-50">Anterior</button>
-                        <span>Página {page} de {totalPages}</span>
-                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-2 border rounded disabled:opacity-50">Siguiente</button>
+                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 border rounded disabled:opacity-50 dark:text-white">Anterior</button>
+                        <span className="dark:text-gray-300">Página {page} de {totalPages}</span>
+                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-2 border rounded disabled:opacity-50 dark:text-white">Siguiente</button>
                     </div>
                 )}
             </Card>
