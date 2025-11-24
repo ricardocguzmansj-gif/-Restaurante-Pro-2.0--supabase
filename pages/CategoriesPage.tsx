@@ -189,7 +189,7 @@ export const CategoriesPage: React.FC = () => {
         }
     };
 
-    const renderTreeItem = (cat: any, depth: number) => {
+    const renderTreeItem = (cat: MenuCategory & { children?: any[] }, depth: number) => {
         const hasChildren = cat.children && cat.children.length > 0;
         const isExpanded = expandedCategories.has(cat.id);
         const isDeleting = deletingIds.has(cat.id);
@@ -253,7 +253,7 @@ export const CategoriesPage: React.FC = () => {
                 
                 {hasChildren && isExpanded && (
                     <div className="animate-fade-in-down">
-                        {cat.children.map((child: any) => renderTreeItem(child, depth + 1))}
+                        {cat.children?.map((child: any) => renderTreeItem(child, depth + 1))}
                     </div>
                 )}
             </div>

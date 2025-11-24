@@ -9,12 +9,10 @@ import { ORDER_STATUS_COLORS, ORDER_TYPE_ICONS } from '../constants';
 import { 
     PlusCircle, Search, DollarSign, Ban, 
     CreditCard, Banknote, X, Edit, Minus, Plus, User as UserIcon,
-    AlertTriangle, History, FileText, Bike, QrCode, CheckCircle
+    AlertTriangle, History, FileText, Bike, QrCode
 } from 'lucide-react';
 
-// ... [PaymentModal, CancelConfirmModal, CollectionsHistoryModal, OrderEditorModal, OrderDetailsModal remain exactly the same as previous file content, reusing them for brevity] ... 
-// NOTE: In a real refactor, I would keep them. I am pasting the full file content to ensure no code loss, but using '...' for the parts that don't change significantly in logic is hard in XML.
-// I will re-include the helper components to be safe.
+// --- Helper Components ---
 
 const PaymentModal: React.FC<{
     order: Order;
@@ -75,7 +73,7 @@ const PaymentModal: React.FC<{
                     <div>
                         <label className="block text-sm font-medium mb-1">Método de Pago</label>
                         <div className="grid grid-cols-2 gap-2">
-                            {['EFECTIVO', 'TARJETA', 'MERCADOPAGO', 'QR'].map(m => (
+                            {['EFECTIVO', 'TARJETA', 'MERCADOPAGO', 'MODO', 'QR'].map(m => (
                                 <button 
                                     key={m}
                                     onClick={() => { setMethod(m as any); setQrUrl(null); }}
@@ -154,6 +152,7 @@ const CollectionsHistoryModal: React.FC<{
 
     const usersMap = useMemo(() => new Map(users.map(u => [u.id, u.nombre])), [users]);
 
+    // Flatten all payments from all orders
     const allPayments = useMemo(() => {
         const payments: Array<{
             orderId: number;
@@ -192,7 +191,7 @@ const CollectionsHistoryModal: React.FC<{
 
     const totalsByMethod = useMemo(() => {
         return filteredPayments.reduce((acc: Record<string, number>, curr) => {
-            const method = String(curr.method);
+            const method = String(curr.method); // Force string to prevent object errors
             const currentTotal = Number(acc[method]) || 0;
             acc[method] = currentTotal + curr.amount;
             return acc;
@@ -295,8 +294,10 @@ const OrderEditorModal: React.FC<{
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Assignment State
     const [assignedStaffId, setAssignedStaffId] = useState<string>('');
 
+    // Initialize assignment based on current order state
     useEffect(() => {
         if (order.tipo === OrderType.SALA && order.mozo_id) {
             setAssignedStaffId(order.mozo_id);
@@ -305,10 +306,12 @@ const OrderEditorModal: React.FC<{
         }
     }, [order]);
 
+    // Filter available staff based on order type
     const availableStaff = useMemo(() => {
         if (order.tipo === OrderType.SALA) {
             return users.filter(u => u.rol === UserRole.MOZO);
         } else if (order.tipo === OrderType.DELIVERY) {
+            // Only show AVAILABLE delivery drivers
             return users.filter(u => u.rol === UserRole.REPARTO && u.estado_delivery === 'DISPONIBLE');
         }
         return [];
@@ -363,7 +366,7 @@ const OrderEditorModal: React.FC<{
 
     const handleSave = async () => {
         const subtotal = localItems.reduce((acc, item) => acc + item.total_item, 0);
-        const total = subtotal;
+        const total = subtotal; // Simplified for editor
 
         try {
             const updatePayload: any = {
@@ -372,6 +375,7 @@ const OrderEditorModal: React.FC<{
                 total
             };
 
+            // Logic for assigning staff
             if (order.tipo === OrderType.SALA) {
                 updatePayload.mozo_id = assignedStaffId || null;
             } else if (order.tipo === OrderType.DELIVERY) {
@@ -390,6 +394,7 @@ const OrderEditorModal: React.FC<{
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[85vh] flex overflow-hidden" onClick={e => e.stopPropagation()}>
+                {/* Left: Menu */}
                 <div className="w-2/3 flex flex-col border-r dark:border-gray-700">
                     <div className="p-4 border-b dark:border-gray-700">
                         <input 
@@ -416,12 +421,14 @@ const OrderEditorModal: React.FC<{
                     </div>
                 </div>
 
+                {/* Right: Cart & Details */}
                 <div className="w-1/3 flex flex-col bg-gray-50 dark:bg-gray-900/50">
                     <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
                         <h3 className="font-bold">Pedido #{order.id}</h3>
                         <button onClick={onClose}><X className="h-5 w-5 text-gray-500"/></button>
                     </div>
                     
+                    {/* Assignment Section */}
                     {(order.tipo === OrderType.SALA || order.tipo === OrderType.DELIVERY) && (
                         <div className="px-4 pt-4">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
@@ -488,6 +495,7 @@ const OrderDetailsModal: React.FC<{
     const customer = customers.find(c => c.id === order.customer_id);
     const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol);
 
+    // This checks strictly for delivered state to disable summary/edit but keeps 'Marcar Entregado' hidden if already done
     const isEntregado = order.estado === OrderStatus.ENTREGADO;
 
     return (
@@ -505,6 +513,7 @@ const OrderDetailsModal: React.FC<{
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Customer Info */}
                     <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg">
                          <div>
                              <h4 className="text-sm font-semibold text-gray-500 uppercase">Cliente</h4>
@@ -527,6 +536,7 @@ const OrderDetailsModal: React.FC<{
                          )}
                     </div>
 
+                    {/* Items */}
                     <div>
                         <h4 className="font-semibold mb-2">Items</h4>
                         <div className="border rounded-lg overflow-hidden dark:border-gray-700">
@@ -554,6 +564,7 @@ const OrderDetailsModal: React.FC<{
                         </div>
                     </div>
 
+                    {/* Totals */}
                     <div className="flex justify-end">
                         <div className="w-48 space-y-1">
                             <div className="flex justify-between text-sm"><span>Subtotal:</span> <span>{formatCurrency(order.subtotal)}</span></div>
@@ -586,15 +597,17 @@ const OrderDetailsModal: React.FC<{
 };
 
 export const OrdersPage: React.FC = () => {
-    const { orders, user, cancelOrder, customers, createOrder, users, updateOrderStatus } = useAppContext();
+    const { orders, user, cancelOrder, customers, createOrder, users } = useAppContext();
     const [searchParams, setSearchParams] = useSearchParams();
     
+    // State
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<OrderStatus | 'TODOS'>('TODOS');
     const [typeFilter, setTypeFilter] = useState<OrderType | 'TODOS'>('TODOS');
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
 
+    // Modal State
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
     const [payingOrder, setPayingOrder] = useState<Order | null>(null);
@@ -604,11 +617,7 @@ export const OrdersPage: React.FC = () => {
     const customersMap = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
     const usersMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
-    // Identify Pending Payment orders (e.g., from web/online)
-    const pendingOrders = useMemo(() => 
-        orders.filter(o => o.estado === OrderStatus.PENDIENTE_PAGO).sort((a,b) => a.id - b.id),
-    [orders]);
-
+    // Handle Deep Link
     useEffect(() => {
         const orderIdParam = searchParams.get('orderId');
         if (orderIdParam) {
@@ -636,7 +645,7 @@ export const OrdersPage: React.FC = () => {
             propina: 0, 
             total: 0, 
             items: [],
-            restaurant_id: user.restaurant_id
+            restaurant_id: user.restaurant_id // handled by context actually
         });
         if (newOrder) {
             setEditingOrder(newOrder);
@@ -666,10 +675,12 @@ export const OrdersPage: React.FC = () => {
     const paginatedOrders = filteredOrders.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
     const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE);
 
-    const canManage = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO, UserRole.CAJA].includes(user.rol);
+    const canManage = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO].includes(user.rol);
     const canCancel = user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol);
-    const canSeeCollections = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.CAJA].includes(user.rol);
-    const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO, UserRole.CAJA].includes(user.rol);
+    const canSeeCollections = user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol);
+    
+    // Define canEdit based on user role
+    const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO].includes(user.rol);
 
     return (
         <div className="space-y-6">
@@ -689,51 +700,8 @@ export const OrdersPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* SECCIÓN DE PEDIDOS ENTRANTES (WEB/PENDIENTES) */}
-            {pendingOrders.length > 0 && (
-                <Card className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500">
-                    <h2 className="text-lg font-bold text-purple-800 dark:text-purple-200 mb-3 flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 animate-pulse" /> Pedidos Entrantes (Web/App) - Pendientes de Aprobación
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {pendingOrders.map(order => {
-                            const customer = customersMap.get(order.customer_id || '');
-                            return (
-                                <div key={order.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border dark:border-gray-700 flex flex-col">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className="font-bold">#{order.id}</span>
-                                        <span className="text-xs bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded">{formatTimeAgo(order.creado_en)}</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-sm">{customer?.nombre || 'Cliente Web'}</p>
-                                        <p className="text-xs text-gray-500">{order.tipo}</p>
-                                        <p className="font-bold text-lg mt-1">{formatCurrency(order.total)}</p>
-                                    </div>
-                                    <div className="flex gap-2 mt-3">
-                                        <button 
-                                            onClick={() => setViewingOrder(order)}
-                                            className="flex-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold rounded"
-                                        >
-                                            Ver Detalle
-                                        </button>
-                                        <button 
-                                            onClick={() => {
-                                                updateOrderStatus(order.id, OrderStatus.NUEVO);
-                                                // Optional: Play sound or show toast
-                                            }}
-                                            className="flex-1 px-2 py-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded flex items-center justify-center gap-1"
-                                        >
-                                            <CheckCircle className="h-3 w-3"/> Aceptar
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </Card>
-            )}
-
             <Card>
+                {/* Filters */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -763,6 +731,7 @@ export const OrdersPage: React.FC = () => {
                     </select>
                 </div>
 
+                {/* Table */}
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700/50">
@@ -783,6 +752,7 @@ export const OrdersPage: React.FC = () => {
                                 const isPaid = order.total > 0 && (order.payments?.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0) >= order.total;
                                 const showPayButton = !isPaid && order.estado !== OrderStatus.CANCELADO;
                                 
+                                // Determine assigned staff
                                 let assignedStaff = null;
                                 if (order.tipo === OrderType.SALA && order.mozo_id) {
                                     assignedStaff = usersMap.get(order.mozo_id);
@@ -871,6 +841,7 @@ export const OrdersPage: React.FC = () => {
                     </table>
                 </div>
 
+                {/* Pagination */}
                 {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4 border-t dark:border-gray-700 pt-4">
                         <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 border rounded disabled:opacity-50">Anterior</button>

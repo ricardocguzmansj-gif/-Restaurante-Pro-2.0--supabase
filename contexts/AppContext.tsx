@@ -1,10 +1,11 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
-import { User, Order, OrderStatus, MenuCategory, MenuItem, Customer, Coupon, Toast, OrderType, UserRole, PaymentDetails, Table, RestaurantSettings, TableStatus, Ingredient, RecipeItem, Restaurant } from '../types';
+import { User, Order, OrderStatus, MenuCategory, MenuItem, Customer, Coupon, Toast, OrderType, UserRole, PaymentDetails, Table, RestaurantSettings, TableStatus, Ingredient, RecipeItem, Restaurant, Sector } from '../types';
 import { api } from '../services/api';
 import { formatCurrency } from '../utils';
 import { getSupabaseClient } from '../services/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { NOTIFICATION_SOUND } from '../constants';
 
 interface AppContextType {
   user: User | null;
@@ -17,6 +18,7 @@ interface AppContextType {
   restaurants: Restaurant[];
   orders: Order[];
   tables: Table[];
+  sectors: Sector[];
   menuItems: MenuItem[];
   processedMenuItems: MenuItem[];
   allItemsForDisplay: MenuItem[];
@@ -38,7 +40,7 @@ interface AppContextType {
   updateOrder: (orderId: number, orderData: Partial<Omit<Order, 'id' | 'creado_en'>>) => Promise<void>;
   assignRepartidor: (orderId: number, repartidorId: string) => Promise<void>;
   assignMozoToOrder: (orderId: number, mozoId: string | null) => Promise<void>;
-  showToast: (message: string, type?: 'success' | 'error') => void;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   createCoupon: (couponData: Omit<Coupon, 'id' | 'restaurant_id'>) => Promise<void>;
   updateCoupon: (couponData: Coupon) => Promise<void>;
   deleteCoupon: (couponId: string) => Promise<void>;
@@ -59,12 +61,16 @@ interface AppContextType {
   saveTableLayout: (tables: Table[]) => Promise<void>;
   updateTable: (table: Table) => Promise<void>;
   deleteTable: (id: string | number) => Promise<void>;
+  joinTables: (tableIds: (string | number)[]) => Promise<void>;
+  ungroupTable: (tableId: string | number) => Promise<void>;
   createIngredient: (data: Omit<Ingredient, 'id' | 'restaurant_id'>) => Promise<void>;
   updateIngredient: (data: Ingredient) => Promise<void>;
   deleteIngredient: (id: string) => Promise<void>;
   createRestaurant: (settings: RestaurantSettings) => Promise<void>;
   deleteRestaurant: (restaurantId: string) => Promise<void>;
   updateUserLocation: (userId: string, lat: number, lng: number) => Promise<void>;
+  createSector: (name: string) => Promise<void>;
+  deleteSector: (id: string) => Promise<void>;
   isOnline: boolean;
 }
 
@@ -82,6 +88,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [restaurantSettings, setRestaurantSettings] = useState<RestaurantSettings | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -90,18 +97,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const isOnline = true;
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
       let safeMessage = 'Operación realizada';
-      
       if (typeof message === 'string') {
           safeMessage = message;
       } else if (message && typeof message === 'object') {
-          safeMessage = (message as any).message || 
-                        (message as any).error_description || 
-                        (message as any).details || 
-                        JSON.stringify(message);
+          safeMessage = (message as any).message || JSON.stringify(message);
       }
-      
       const newToast: Toast = { id: Date.now(), message: safeMessage, type };
       setToast(newToast);
       setTimeout(() => setToast(prev => (prev?.id === newToast.id ? null : prev)), 5000);
@@ -110,22 +112,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const handleError = useCallback((error: any, defaultMsg: string) => {
       console.error("AppContext Error:", defaultMsg, error);
       let msg = defaultMsg;
-      
       if (error) {
-          let errorText = null;
-          if (typeof error === 'string') {
-              errorText = error;
-          } else if (typeof error === 'object') {
-              errorText = error.message || error.error_description || error.details || JSON.stringify(error);
-          }
-
-          if (errorText && typeof errorText === 'string') {
-              if (errorText.includes("Could not find the") && errorText.includes("parent_id")) {
-                  msg = "⚠️ ERROR DB: Falta columna 'parent_id'. Ve a Supabase > Settings > API > Schema Cache y pulsa 'Reload'.";
-              } else if (errorText !== '{}') {
-                  msg = `${defaultMsg}: ${errorText}`;
-              }
-          }
+          let errorText = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+          if (errorText !== '{}') msg = `${defaultMsg}: ${errorText}`;
       }
       showToast(msg, "error");
   }, [showToast]);
@@ -133,7 +122,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loadInitialData = useCallback(async (restaurantId: string) => {
     try {
       setIsLoading(true);
-      const [ordersData, menuItemsData, customersData, couponsData, usersData, categoriesData, settingsData, tablesData, ingredientsData] = await Promise.all([
+      const [ordersData, menuItemsData, customersData, couponsData, usersData, categoriesData, settingsData, tablesData, ingredientsData, sectorsData] = await Promise.all([
         api.getOrders(restaurantId),
         api.getMenuItems(restaurantId),
         api.getCustomers(restaurantId),
@@ -143,6 +132,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         api.getRestaurantSettings(restaurantId),
         api.getTables(restaurantId),
         api.getIngredients(restaurantId),
+        api.getSectors(restaurantId)
       ]);
       setOrders(ordersData);
       setMenuItems(menuItemsData);
@@ -153,6 +143,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setRestaurantSettings(settingsData);
       setTables(tablesData);
       setIngredients(ingredientsData);
+      setSectors(sectorsData);
     } catch (error: any) {
       handleError(error, "Error al conectar con la base de datos");
     } finally {
@@ -165,9 +156,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           try {
               const rests = await api.getRestaurants();
               setRestaurants(rests);
-          } catch (e) {
-              console.error(e);
-          }
+          } catch (e) { console.error(e); }
       };
       loadRestaurants();
   }, []);
@@ -177,15 +166,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loadInitialData(currentRestaurantId);
     } else {
         if (user?.rol !== UserRole.SUPER_ADMIN) {
-            setOrders([]);
-            setMenuItems([]);
-            setCustomers([]);
-            setCoupons([]);
-            setUsers([]);
-            setCategories([]);
-            setRestaurantSettings(null);
-            setTables([]);
-            setIngredients([]);
+            setOrders([]); setMenuItems([]); setCustomers([]); setCoupons([]); setUsers([]); setCategories([]);
+            setRestaurantSettings(null); setTables([]); setIngredients([]); setSectors([]);
         }
     }
   }, [currentRestaurantId, loadInitialData, user]);
@@ -197,9 +179,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!supabase) return;
 
     const playSound = () => {
-        const notificationSound = new Audio('https://cdn.pixabay.com/audio/2022/03/15/audio_2c244a341b.mp3');
-        notificationSound.volume = 0.5;
-        notificationSound.play().catch(e => console.warn("Sound play blocked:", e));
+        try {
+            const audio = new Audio(NOTIFICATION_SOUND);
+            audio.volume = 0.5;
+            audio.play().catch(e => console.warn("Audio play failed", e));
+        } catch (e) { console.error("Audio failed", e); }
     };
 
     if (subscriptionRef.current) {
@@ -257,9 +241,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const recoverPassword = async (email: string): Promise<string> => {
-      return await api.recoverPassword(email);
-  };
+  const recoverPassword = async (email: string): Promise<string> => api.recoverPassword(email);
 
   const logout = () => {
     setUser(null);
@@ -335,55 +317,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
         const updatedOrder = await api.cancelOrder(orderId);
         setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? updatedOrder : order));
-        
-        const [updatedIngredients, updatedUsers, updatedTables] = await Promise.all([
-            api.getIngredients(currentRestaurantId),
-            api.getUsers(currentRestaurantId),
-            api.getTables(currentRestaurantId)
-        ]);
-        setIngredients(updatedIngredients);
-        setUsers(updatedUsers);
-        setTables(updatedTables);
         showToast(`Pedido #${orderId} ha sido cancelado.`);
     } catch (error: any) {
         handleError(error, "Error al cancelar el pedido");
     }
   };
 
-  const createOrder = async (orderData: Omit<Order, 'id' | 'creado_en' | 'estado' | 'repartidor_id' | 'payments' | 'creado_por_id' | 'mozo_id'>): Promise<Order | null> => {
+  const createOrder = async (orderData: any): Promise<Order | null> => {
     if (!user || !currentRestaurantId) {
         showToast("Error de autenticación o contexto.", "error");
         return null;
     }
     try {
       const isSalaOrder = orderData.tipo === OrderType.SALA;
-      const mozo_id = (isSalaOrder && user?.rol === UserRole.MOZO) ? user.id : null;
+      // Auto-assign Mozo if creator is a Mozo and it's a Sala order
+      const mozo_id = (isSalaOrder && user?.rol === UserRole.MOZO) ? user.id : orderData.mozo_id || null;
       
-      const newOrder = await api.createOrder({ ...orderData, creado_por_id: user.id, mozo_id, restaurant_id: currentRestaurantId });
+      // Determine Status:
+      // If created internally (by Staff), go straight to NUEVO (Kitchen).
+      // If public/online, it might stay PENDIENTE_PAGO (handled in createPublicOrder typically, but if staff creates 'Take Away' via phone, it goes to NUEVO).
+      let initialStatus = OrderStatus.NUEVO;
+      
+      const newOrder = await api.createOrder({ 
+          ...orderData, 
+          creado_por_id: user.id, 
+          mozo_id, 
+          restaurant_id: currentRestaurantId,
+          estado: initialStatus
+      });
+      
       setOrders(prevOrders => [newOrder, ...prevOrders]);
 
-      // LÓGICA MESA: Crear Pedido -> OCUPADA (NARANJA)
-      // Buscamos la mesa por table_number (que coincide con el table_id del pedido)
       if (isSalaOrder && newOrder.table_id) {
           const tableToUpdate = tables.find(t => t.table_number === newOrder.table_id);
           
           if (tableToUpdate) {
-              // Forzamos actualización en BD usando el ID real de la mesa
-              const updatedTablePayload = {
-                  ...tableToUpdate,
-                  estado: TableStatus.OCUPADA, // Naranja
-                  order_id: newOrder.id,
-                  mozo_id: mozo_id || tableToUpdate.mozo_id // Mantener mozo si ya estaba asignado o usar el actual
-              };
-              await api.updateTable(updatedTablePayload);
-              
-              // Actualizamos estado local inmediatamente
-              setTables(prev => prev.map(t => t.id === tableToUpdate.id ? updatedTablePayload : t));
-          } else {
-              console.warn(`Mesa con table_number ${newOrder.table_id} no encontrada en el contexto.`);
+              let tablesToUpdate = [tableToUpdate];
+              if (tableToUpdate.group_id) {
+                  tablesToUpdate = tables.filter(t => t.group_id === tableToUpdate.group_id);
+              }
+
+              for (const t of tablesToUpdate) {
+                  const updatedTablePayload = {
+                      ...t,
+                      estado: TableStatus.OCUPADA,
+                      order_id: newOrder.id,
+                      mozo_id: mozo_id || t.mozo_id
+                  };
+                  await api.updateTable(updatedTablePayload);
+                  setTables(prev => prev.map(pt => pt.id === t.id ? updatedTablePayload : pt));
+              }
           }
       }
-      showToast(`Pedido #${newOrder.id} creado.`);
+      showToast(`Pedido #${newOrder.id} creado y enviado a cocina.`);
       return newOrder;
     } catch (error) {
       handleError(error, "Error al crear el pedido");
@@ -391,9 +377,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const createPublicOrder = async (orderData: Omit<Order, 'id' | 'creado_en' | 'estado' | 'repartidor_id' | 'payments' | 'creado_por_id' | 'mozo_id'>): Promise<Order | null> => {
+  const createPublicOrder = async (orderData: any): Promise<Order | null> => {
     if (!currentRestaurantId) return null;
     try {
+      // Public orders start as PENDIENTE_PAGO usually
       const newOrder = await api.createPublicOrder({ ...orderData, restaurant_id: currentRestaurantId });
       showToast(`Pedido #${newOrder.id} recibido. ¡Gracias!`);
       return newOrder;
@@ -403,7 +390,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-   const createCustomer = async (customerData: Omit<Customer, 'id' | 'restaurant_id' | 'ltv' | 'ultima_compra' | 'frecuencia_promedio_dias' | 'is_verified'>): Promise<Customer | null> => {
+   const createCustomer = async (customerData: any): Promise<Customer | null> => {
     if (!currentRestaurantId) return null;
     try {
       const newCustomer = await api.createCustomer({ ...customerData, restaurant_id: currentRestaurantId });
@@ -508,49 +495,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   const addPaymentToOrder = async (orderId: number, method: any, amount: number) => { 
       try {
-        const { data: order } = await getSupabaseClient()!.from('orders').select('payments, total, tipo, table_id').eq('id', orderId).single();
-        if (!order) throw new Error("Order not found");
-
-        const newPayment = {
-            status: 'PAGADO',
-            method,
-            amount,
-            creado_en: new Date().toISOString()
-        };
-        const updatedPayments = [...(order.payments || []), newPayment];
-        const totalPaid = updatedPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-        
-        let updatePayload: any = { payments: updatedPayments };
-
-        // Si se ha pagado el total
-        if (totalPaid >= order.total) {
-             if (order.tipo === OrderType.SALA) {
-                 updatePayload.estado = OrderStatus.ENTREGADO;
-                 // LÓGICA MESA: Pagado -> NECESITA_LIMPIEZA (ROJO)
-                 if (order.table_id) {
-                     // Importante: Buscar la mesa por ID o por table_number si es un número simple
-                     // La orden guarda table_id como el número visual de la mesa
-                     // Se usa loose equality `==` para manejar diferencias string/number
-                     const existingTable = tables.find(t => t.id == order.table_id || t.table_number == order.table_id);
-                     
-                     if (existingTable) {
-                         const updatedTablePayload = { 
-                             ...existingTable, 
-                             estado: TableStatus.NECESITA_LIMPIEZA 
-                         } as Table;
-                         
-                         await api.updateTable(updatedTablePayload);
-                         setTables(prev => prev.map(t => t.id === existingTable.id ? { ...t, estado: TableStatus.NECESITA_LIMPIEZA } : t));
-                     }
-                 }
-             } else {
-                 updatePayload.estado = OrderStatus.NUEVO;
+        const updatedOrder = await api.addPaymentToOrder(orderId, method, amount);
+        if (updatedOrder.estado === OrderStatus.ENTREGADO && updatedOrder.tipo === OrderType.SALA && updatedOrder.table_id) {
+             const linkedTables = tables.filter(t => t.order_id === updatedOrder.id);
+             for (const t of linkedTables) {
+                 const updatedTablePayload = { ...t, estado: TableStatus.NECESITA_LIMPIEZA } as Table;
+                 await api.updateTable(updatedTablePayload);
+                 setTables(prev => prev.map(pt => pt.id === t.id ? updatedTablePayload : pt));
              }
         }
-
-        const { data: updatedOrder, error } = await getSupabaseClient()!.from('orders').update(updatePayload).eq('id', orderId).select().single();
-        if (error) throw error;
-
         setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
         showToast("Pago registrado.");
       } catch(error) {
@@ -693,23 +646,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
   };
   
-  // LÓGICA MESA: Limpiar -> LIBRE (Verde)
   const cleanTable = async (id: string | number) => {
       if(!currentRestaurantId) return;
       try {
-        // Use loose equality to match string vs number IDs
         const targetTable = tables.find(t => t.id == id);
         if(targetTable) {
-            // Update DB
-            const updated = await api.updateTable({
-                ...targetTable, 
-                estado: TableStatus.LIBRE, 
-                order_id: null, 
-                mozo_id: null
-            });
-            // Update Local State
-            setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
-            showToast("Mesa limpia y liberada.");
+            let tablesToClean = [targetTable];
+            if (targetTable.group_id) {
+                tablesToClean = tables.filter(t => t.group_id === targetTable.group_id);
+            }
+
+            for(const t of tablesToClean) {
+                const updated = await api.updateTable({
+                    ...t, 
+                    estado: TableStatus.LIBRE, 
+                    order_id: null, 
+                    mozo_id: null
+                });
+                setTables(prev => prev.map(pt => pt.id === updated.id ? updated : pt));
+            }
+            showToast("Mesa(s) limpia(s) y liberada(s).");
         }
       } catch(error) {
           handleError(error, "Error al limpiar mesa");
@@ -734,10 +690,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
   };
 
+  const joinTables = async (tableIds: (string | number)[]) => {
+      try {
+          const groupId = `group-${Date.now()}`;
+          const tablesToUpdate = tables.filter(t => tableIds.includes(t.id));
+          
+          for(const t of tablesToUpdate) {
+              const updated = { ...t, group_id: groupId };
+              await api.updateTable(updated);
+              setTables(prev => prev.map(x => x.id === t.id ? updated : x));
+          }
+          showToast("Mesas unidas correctamente.");
+      } catch(error) {
+          handleError(error, "Error al unir mesas");
+      }
+  };
+
+  const ungroupTable = async (tableId: string | number) => {
+      try {
+          const targetTable = tables.find(t => t.id === tableId);
+          if (!targetTable || !targetTable.group_id) return;
+          
+          const groupedTables = tables.filter(t => t.group_id === targetTable.group_id);
+          
+          for(const t of groupedTables) {
+              const updated = { ...t, group_id: null };
+              await api.updateTable(updated);
+              setTables(prev => prev.map(x => x.id === t.id ? updated : x));
+          }
+          showToast("Mesas separadas.");
+      } catch(error) {
+          handleError(error, "Error al separar mesas");
+      }
+  };
+
   const deleteTable = async (id: string | number) => {
       try {
           await api.deleteTable(id);
-          setTables(prev => prev.filter(t => t.id != id)); // Loose equality for safety
+          setTables(prev => prev.filter(t => t.id != id)); 
       } catch(error) {
           handleError(error, "Error al eliminar mesa");
       }
@@ -793,15 +783,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateUserLocation = async (id: string, lat: number, lng: number) => { 
       try {
         await api.updateUserLocation(id, lat, lng); 
-      } catch(error) {
-          console.error("Error updating location", error);
-      }
+      } catch(error) { console.error("Error updating location", error); }
+  };
+
+  const createSector = async (name: string) => {
+      if (!currentRestaurantId) return;
+      try {
+          const orden = sectors.length > 0 ? Math.max(...sectors.map(s => s.orden)) + 1 : 0;
+          const newSector = await api.createSector({ restaurant_id: currentRestaurantId, nombre: name, orden });
+          setSectors(prev => [...prev, newSector]);
+          showToast("Sector creado.");
+      } catch (e) { handleError(e, "Error al crear sector"); }
+  };
+
+  const deleteSector = async (id: string) => {
+      try {
+          await api.deleteSector(id);
+          setSectors(prev => prev.filter(s => s.id !== id));
+          showToast("Sector eliminado.");
+      } catch (e) { handleError(e, "Error al eliminar sector"); }
   };
 
   const value = {
-    user, users, login, logout, recoverPassword, currentRestaurantId, switchRestaurant, restaurants, orders, tables, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,
+    user, users, login, logout, recoverPassword, currentRestaurantId, switchRestaurant, restaurants, orders, tables, sectors, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,
     updateOrderStatus, cancelOrder, createOrder, createPublicOrder, createCustomer, updateCustomer, deleteCustomer, findCustomerByContact, verifyCustomer, updateOrder, assignRepartidor, assignMozoToOrder, showToast, createCoupon, updateCoupon, deleteCoupon, generatePaymentQR, addPaymentToOrder,
     createUser, updateUser, deleteUser, createMenuItem, updateMenuItem, deleteMenuItem, restoreMenuItem, updateCategories, createCategory, deleteCategory, updateRestaurantSettings, cleanTable, saveTableLayout, updateTable, deleteTable, createIngredient, updateIngredient, deleteIngredient, createRestaurant, deleteRestaurant, updateUserLocation,
+    createSector, deleteSector, joinTables, ungroupTable,
     isOnline
   };
 
