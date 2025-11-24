@@ -58,6 +58,7 @@ interface AppContextType {
   cleanTable: (tableId: string | number) => Promise<void>;
   saveTableLayout: (tables: Table[]) => Promise<void>;
   updateTable: (table: Table) => Promise<void>;
+  deleteTable: (id: string | number) => Promise<void>;
   createIngredient: (data: Omit<Ingredient, 'id' | 'restaurant_id'>) => Promise<void>;
   updateIngredient: (data: Ingredient) => Promise<void>;
   deleteIngredient: (id: string) => Promise<void>;
@@ -362,11 +363,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setOrders(prevOrders => [newOrder, ...prevOrders]);
 
       // LÓGICA MESA: Crear Pedido -> OCUPADA (NARANJA)
-      // Buscamos la mesa por table_number (ya que la BD lo usa) pero actualizamos por ID real
+      // Buscamos la mesa por table_number (que coincide con el table_id del pedido)
       if (isSalaOrder && newOrder.table_id) {
           const tableToUpdate = tables.find(t => t.table_number === newOrder.table_id);
+          
           if (tableToUpdate) {
-              // Forzamos actualización en BD
+              // Forzamos actualización en BD usando el ID real de la mesa
               const updatedTablePayload = {
                   ...tableToUpdate,
                   estado: TableStatus.OCUPADA, // Naranja
@@ -377,6 +379,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               
               // Actualizamos estado local inmediatamente
               setTables(prev => prev.map(t => t.id === tableToUpdate.id ? updatedTablePayload : t));
+          } else {
+              console.warn(`Mesa con table_number ${newOrder.table_id} no encontrada en el contexto.`);
           }
       }
       showToast(`Pedido #${newOrder.id} creado.`);
@@ -524,8 +528,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  updatePayload.estado = OrderStatus.ENTREGADO;
                  // LÓGICA MESA: Pagado -> NECESITA_LIMPIEZA (ROJO)
                  if (order.table_id) {
-                     // Importante: Buscar la mesa por table_number
-                     const existingTable = tables.find(t => t.table_number === order.table_id);
+                     // Importante: Buscar la mesa por ID o por table_number si es un número simple
+                     // La orden guarda table_id como el número visual de la mesa
+                     // Se usa loose equality `==` para manejar diferencias string/number
+                     const existingTable = tables.find(t => t.id == order.table_id || t.table_number == order.table_id);
+                     
                      if (existingTable) {
                          const updatedTablePayload = { 
                              ...existingTable, 
@@ -690,7 +697,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const cleanTable = async (id: string | number) => {
       if(!currentRestaurantId) return;
       try {
-        const targetTable = tables.find(t => t.id === id);
+        // Use loose equality to match string vs number IDs
+        const targetTable = tables.find(t => t.id == id);
         if(targetTable) {
             // Update DB
             const updated = await api.updateTable({
@@ -723,6 +731,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTables(prev => prev.map(x => x.id === updated.id ? updated : x)); 
       } catch(error) {
           handleError(error, "Error al actualizar mesa");
+      }
+  };
+
+  const deleteTable = async (id: string | number) => {
+      try {
+          await api.deleteTable(id);
+          setTables(prev => prev.filter(t => t.id != id)); // Loose equality for safety
+      } catch(error) {
+          handleError(error, "Error al eliminar mesa");
       }
   };
   
@@ -784,7 +801,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const value = {
     user, users, login, logout, recoverPassword, currentRestaurantId, switchRestaurant, restaurants, orders, tables, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,
     updateOrderStatus, cancelOrder, createOrder, createPublicOrder, createCustomer, updateCustomer, deleteCustomer, findCustomerByContact, verifyCustomer, updateOrder, assignRepartidor, assignMozoToOrder, showToast, createCoupon, updateCoupon, deleteCoupon, generatePaymentQR, addPaymentToOrder,
-    createUser, updateUser, deleteUser, createMenuItem, updateMenuItem, deleteMenuItem, restoreMenuItem, updateCategories, createCategory, deleteCategory, updateRestaurantSettings, cleanTable, saveTableLayout, updateTable, createIngredient, updateIngredient, deleteIngredient, createRestaurant, deleteRestaurant, updateUserLocation,
+    createUser, updateUser, deleteUser, createMenuItem, updateMenuItem, deleteMenuItem, restoreMenuItem, updateCategories, createCategory, deleteCategory, updateRestaurantSettings, cleanTable, saveTableLayout, updateTable, deleteTable, createIngredient, updateIngredient, deleteIngredient, createRestaurant, deleteRestaurant, updateUserLocation,
     isOnline
   };
 

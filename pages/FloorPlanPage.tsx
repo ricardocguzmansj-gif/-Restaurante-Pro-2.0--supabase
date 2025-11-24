@@ -4,23 +4,40 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
 import { Table, TableStatus, UserRole, OrderType } from '../types';
 import { Card } from '../components/ui/Card';
-import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles } from 'lucide-react';
+import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles, Trash2, RotateCcw } from 'lucide-react';
 
 interface DraggableTableProps {
     table: Table;
     isEditing: boolean;
+    isMarkedForDeletion: boolean;
     onTableClick: (table: Table) => void;
-    onDrag: (id: number, x: number, y: number) => void;
-    onShapeChange: (id: number) => void;
+    onDrag: (id: number | string, x: number, y: number) => void;
+    onShapeChange: (id: number | string) => void;
+    onDelete: (id: number | string) => void;
+    onUndoDelete: (id: number | string) => void;
     floorPlanRef: React.RefObject<HTMLDivElement>;
 }
 
-const DraggableTable: React.FC<DraggableTableProps> = ({ table, isEditing, onTableClick, onDrag, onShapeChange, floorPlanRef }) => {
+const DraggableTable: React.FC<DraggableTableProps> = ({ 
+    table, 
+    isEditing, 
+    isMarkedForDeletion,
+    onTableClick, 
+    onDrag, 
+    onShapeChange, 
+    onDelete,
+    onUndoDelete,
+    floorPlanRef 
+}) => {
     const [isDragging, setIsDragging] = useState(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
     // LÓGICA DE COLORES ESTRICTA
     const getTableColor = (status: string) => {
+        if (isMarkedForDeletion) {
+            return { bg: '#dc2626', border: '#991b1b', text: '#ffffff' }; // ROJO INTENSO (Borrado pendiente)
+        }
+
         const normalized = (status || '').toUpperCase();
         
         // 1. LIBRE -> VERDE
@@ -41,9 +58,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({ table, isEditing, onTab
     };
 
     const colors = getTableColor(table.estado);
+    
+    // Solo permitir borrar si está LIBRE
+    const canDelete = (table.estado || 'LIBRE').toUpperCase() === 'LIBRE';
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isEditing) return;
+        if (!isEditing || isMarkedForDeletion) return; // No arrastrar si está marcada para borrar
         setIsDragging(true);
         dragOffset.current = {
             x: e.clientX - table.x,
@@ -63,10 +83,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({ table, isEditing, onTab
         newX = Math.max(0, Math.min(newX, floorRect.width - (table.shape === 'rectangle-h' ? 128 : 64)));
         newY = Math.max(0, Math.min(newY, floorRect.height - (table.shape === 'rectangle-v' ? 128 : 64)));
 
-        // Cast id to number if needed for local state, or update drag handler to accept string | number
-        // Assuming drag handler expects number for now based on previous code, but if ID is string, this needs care.
-        // For now, let's assume local dragging uses the table ID which might be numeric or we cast it.
-        onDrag(table.id as number, newX, newY);
+        onDrag(table.id, newX, newY);
     };
 
     const handleMouseUp = () => {
@@ -104,33 +121,63 @@ const DraggableTable: React.FC<DraggableTableProps> = ({ table, isEditing, onTab
                 borderColor: colors.border,
                 color: colors.text,
                 borderWidth: '2px',
-                borderStyle: 'solid'
+                borderStyle: 'solid',
+                opacity: isMarkedForDeletion ? 0.9 : 1,
+                zIndex: isDragging ? 50 : 1
             }}
             className={`absolute ${getShapeClasses()} rounded-lg flex items-center justify-center transition-all duration-200 select-none shadow-md
-                ${isEditing ? 'cursor-move' : 'cursor-pointer hover:shadow-xl hover:scale-105'}
-                ${isDragging ? 'shadow-2xl z-10 scale-105' : ''}`}
+                ${isEditing && !isMarkedForDeletion ? 'cursor-move' : 'cursor-pointer hover:shadow-xl hover:scale-105'}
+                ${isDragging ? 'shadow-2xl scale-105' : ''}`}
             onMouseDown={handleMouseDown}
             onClick={() => !isEditing && onTableClick(table)}
         >
             <span className="font-bold text-lg drop-shadow-md">{table.table_number || table.id}</span>
             {isEditing && (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        // Cast to number if needed
-                        onShapeChange(table.id as number);
-                    }}
-                    className="absolute top-1 right-1 p-1 bg-white/50 dark:bg-black/50 rounded-full hover:bg-white dark:hover:bg-black text-gray-700 dark:text-gray-200 z-20"
-                    title="Cambiar forma"
-                >
-                    <Repeat className="h-3 w-3" />
-                </button>
+                <>
+                    {!isMarkedForDeletion && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onShapeChange(table.id);
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-white/50 dark:bg-black/50 rounded-full hover:bg-white dark:hover:bg-black text-gray-700 dark:text-gray-200 z-20"
+                            title="Cambiar forma"
+                        >
+                            <Repeat className="h-3 w-3" />
+                        </button>
+                    )}
+                    
+                    {canDelete && !isMarkedForDeletion && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(table.id);
+                            }}
+                            className="absolute -top-2 -left-2 p-1 bg-red-500 rounded-full hover:bg-red-600 text-white z-20 shadow-sm transform hover:scale-110 transition-transform"
+                            title="Marcar para Eliminar"
+                        >
+                            <Trash2 className="h-3 w-3" />
+                        </button>
+                    )}
+
+                    {isMarkedForDeletion && (
+                         <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onUndoDelete(table.id);
+                            }}
+                            className="absolute -top-2 -left-2 p-1 bg-gray-500 rounded-full hover:bg-gray-600 text-white z-20 shadow-sm transform hover:scale-110 transition-transform"
+                            title="Deshacer Borrado"
+                        >
+                            <RotateCcw className="h-3 w-3" />
+                        </button>
+                    )}
+                </>
             )}
         </div>
     );
 };
 
-// --- REFACTORIZACIÓN: COMPONENTE DE BOTONES DE ACCIÓN ---
 const TableActionButtons: React.FC<{ table: Table; onClose: () => void }> = ({ table, onClose }) => {
     const { cleanTable, createOrder, user, updateTable, showToast, orders, assignMozoToOrder } = useAppContext();
     const navigate = useNavigate();
@@ -142,7 +189,6 @@ const TableActionButtons: React.FC<{ table: Table; onClose: () => void }> = ({ t
     // --- CASO 1: MESA LIBRE (VERDE) ---
     if (status === 'LIBRE') {
         const handleCreateOrder = async () => {
-            // CRITICAL FIX: Use table.table_number instead of table.id for the order linkage
             const newOrder = await createOrder({
                 customer_id: null,
                 table_id: table.table_number, 
@@ -326,16 +372,19 @@ const TableDetailsModal: React.FC<{
 };
 
 export const FloorPlanPage: React.FC = () => {
-    const { tables, user, saveTableLayout, showToast, currentRestaurantId } = useAppContext();
+    const { tables, user, saveTableLayout, showToast, currentRestaurantId, deleteTable } = useAppContext();
     const [isEditing, setIsEditing] = useState(false);
     const [localTables, setLocalTables] = useState<Table[]>([]);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    const [deletedTableIds, setDeletedTableIds] = useState<Set<number | string>>(new Set());
     const floorPlanRef = useRef<HTMLDivElement>(null);
 
-    // Sincronizar tablas locales con el contexto cuando este cambia
     useEffect(() => {
-        setLocalTables(JSON.parse(JSON.stringify(tables)));
-    }, [tables]);
+        if (!isEditing) {
+            setLocalTables(JSON.parse(JSON.stringify(tables)));
+            setDeletedTableIds(new Set());
+        }
+    }, [tables, isEditing]);
     
     const canEdit = useMemo(() => user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol), [user]);
 
@@ -345,34 +394,50 @@ export const FloorPlanPage: React.FC = () => {
         }
     };
 
-    const handleToggleEditMode = () => {
-        if (isEditing) {
-            // Si estamos saliendo del modo edición, comprobar cambios
-            if (JSON.stringify(localTables) !== JSON.stringify(tables)) {
-                 if (window.confirm('Tienes cambios de diseño sin guardar. ¿Quieres descartarlos?')) {
-                    setLocalTables(JSON.parse(JSON.stringify(tables)));
-                    setIsEditing(false);
-                 }
-            } else {
-                 setIsEditing(false);
-            }
-        } else {
-             setIsEditing(true);
-        }
+    const handleEnterEditMode = () => {
+        setLocalTables(JSON.parse(JSON.stringify(tables)));
+        setDeletedTableIds(new Set());
+        setIsEditing(true);
     };
     
     const handleSaveChanges = async () => {
-        await saveTableLayout(localTables);
-        setIsEditing(false);
+        try {
+            // 1. Ejecutar eliminaciones REALES en BD para las mesas marcadas en rojo
+            if (deletedTableIds.size > 0) {
+                const idsToDelete = Array.from(deletedTableIds);
+                for (const id of idsToDelete) {
+                    await deleteTable(id);
+                }
+            }
+            
+            // 2. Guardar actualizaciones/inserciones
+            // IMPORTANTE: Filtramos las mesas marcadas para borrar para que no se envíen al backend como "actualización"
+            const tablesToSave = localTables.filter(t => !deletedTableIds.has(t.id));
+            
+            if (tablesToSave.length > 0) {
+                await saveTableLayout(tablesToSave);
+            } else if (localTables.length > 0 && tablesToSave.length === 0) {
+                // Si borré todas las mesas, envío array vacío
+                await saveTableLayout([]);
+            }
+            
+            // Limpiar estados
+            setDeletedTableIds(new Set());
+            setIsEditing(false);
+            showToast("Cambios guardados y mesas eliminadas correctamente.");
+        } catch (error) {
+            console.error("Error saving layout:", error);
+            showToast("Error al guardar cambios.", "error");
+        }
     };
     
-    const handleDrag = (id: number, x: number, y: number) => {
+    const handleDrag = (id: number | string, x: number, y: number) => {
         setLocalTables(prevTables =>
             prevTables.map(t => (t.id === id ? { ...t, x, y } : t))
         );
     };
     
-    const handleShapeChange = (tableId: number) => {
+    const handleShapeChange = (tableId: number | string) => {
         setLocalTables(prevTables =>
             prevTables.map(t => {
                 if (t.id === tableId) {
@@ -390,14 +455,43 @@ export const FloorPlanPage: React.FC = () => {
         );
     };
 
+    // MARCAR PARA BORRAR (ROJO)
+    const handleDeleteLocal = (id: number | string) => {
+        const targetTable = localTables.find(t => t.id === id);
+        
+        if (!targetTable) return;
+
+        const status = (targetTable.estado || 'LIBRE').toUpperCase();
+        if (status !== 'LIBRE') {
+            showToast("Solo se pueden borrar las mesas que están en verde (LIBRE).", "error");
+            return;
+        }
+
+        // En lugar de eliminar del array local, añadimos al Set de borrados pendientes
+        setDeletedTableIds(prev => {
+            const newSet = new Set(prev);
+            newSet.add(id);
+            return newSet;
+        });
+    };
+
+    // DESHACER BORRADO (Quitar rojo)
+    const handleUndoDelete = (id: number | string) => {
+        setDeletedTableIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(id);
+            return newSet;
+        });
+    };
+
     const handleAddTable = () => {
         if (!currentRestaurantId) return;
-        // Encontrar un ID numérico único (esto es para la UI local, el backend usa UUID o composite)
-        // Para simplificar en este frontend, asumimos que table_number es lo que mostramos
-        const newNumber = localTables.length > 0 ? Math.max(...localTables.map(t => t.table_number || 0)) + 1 : 1;
+        // Calcular el siguiente número de mesa basándonos solo en las NO borradas
+        const activeTables = localTables.filter(t => !deletedTableIds.has(t.id));
+        const newNumber = activeTables.length > 0 ? Math.max(...activeTables.map(t => t.table_number || 0)) + 1 : 1;
         
         const newTable: Table = {
-            id: Date.now(), // ID temporal para React key
+            id: Date.now(), // ID temporal (se actualizará con ID real al recargar desde DB si es necesario)
             table_number: newNumber,
             restaurant_id: currentRestaurantId,
             nombre: `Mesa ${newNumber}`,
@@ -409,7 +503,6 @@ export const FloorPlanPage: React.FC = () => {
             shape: 'square'
         };
         setLocalTables([...localTables, newTable]);
-        showToast(`Nueva mesa #${newNumber} añadida.`, 'success');
     };
 
     return (
@@ -418,7 +511,6 @@ export const FloorPlanPage: React.FC = () => {
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Plano del Salón</h1>
                 
                 <div className="flex items-center gap-2">
-                    {/* Leyenda de Colores Simple */}
                     <div className="flex gap-3 text-xs mr-4 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm">
                         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Libre</div>
                         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-orange-500 rounded-full"></div> Ocupada</div>
@@ -437,7 +529,7 @@ export const FloorPlanPage: React.FC = () => {
                                     </button>
                                 </>
                             ) : (
-                                <button onClick={handleToggleEditMode} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600 rounded-lg shadow-sm">
+                                <button onClick={handleEnterEditMode} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600 rounded-lg shadow-sm">
                                 <Pencil className="h-4 w-4" /> Editar Diseño
                                 </button>
                             )}
@@ -460,9 +552,12 @@ export const FloorPlanPage: React.FC = () => {
                             key={table.id}
                             table={table}
                             isEditing={isEditing}
+                            isMarkedForDeletion={deletedTableIds.has(table.id)}
                             onTableClick={handleTableClick}
                             onDrag={handleDrag}
                             onShapeChange={handleShapeChange}
+                            onDelete={handleDeleteLocal}
+                            onUndoDelete={handleUndoDelete}
                             floorPlanRef={floorPlanRef}
                         />
                     ))}

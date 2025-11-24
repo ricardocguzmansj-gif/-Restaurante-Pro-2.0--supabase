@@ -95,7 +95,7 @@ export interface Customer {
 
 export enum OrderType {
     SALA = "SALA",
-    PARA_LLEVAR = "PARA LLEVAR",
+    PARA_LLEVAR = "PARA_LLEVAR",
     DELIVERY = "DELIVERY",
 }
 
@@ -146,7 +146,7 @@ export interface Table {
     x: number;
     y: number;
     shape: 'square' | 'rectangle-v' | 'rectangle-h';
-    table_number?: number;
+    table_number: number;
 }
 
 

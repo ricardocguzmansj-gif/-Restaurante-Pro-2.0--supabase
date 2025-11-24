@@ -1,4 +1,3 @@
-
 import { getSupabaseClient } from './supabase';
 import { 
     Order, MenuItem, Customer, Coupon, User, RestaurantSettings, 
@@ -436,6 +435,12 @@ export const api = {
         const { data, error } = await supabase!.from('tables').update(table).eq('id', table.id).select().single();
         if (error) throw error;
         return data;
+    },
+
+    deleteTable: async (id: string | number): Promise<void> => {
+        checkConnection();
+        const { error } = await supabase!.from('tables').delete().eq('id', id);
+        if (error) throw error;
     },
 
     updateTablesLayout: async (tables: Table[]): Promise<Table[]> => {

@@ -123,7 +123,7 @@ const CreateOrderModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         if (orderType === OrderType.SALA) {
             setSelectedCustomer(null);
             if (availableTables.length > 0) {
-                setSelectedTable(String(availableTables[0].id));
+                setSelectedTable(String(availableTables[0].table_number));
             } else {
                 setSelectedTable('');
             }
@@ -324,7 +324,7 @@ const CreateOrderModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 {orderType === OrderType.SALA ? (
                                     <select value={selectedTable} onChange={e => setSelectedTable(e.target.value)} disabled={availableTables.length === 0} className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50">
                                         {availableTables.length > 0 ? (
-                                            availableTables.map(t => <option key={t.id} value={t.id}>Mesa {t.id}</option>)
+                                            availableTables.map(t => <option key={t.id} value={t.table_number}>Mesa {t.table_number}</option>)
                                         ) : (
                                             <option value="">No hay mesas libres</option>
                                         )}
@@ -1464,7 +1464,8 @@ export const OrdersPage: React.FC = () => {
             
         const canChangeStatus = order.estado === OrderStatus.LISTO;
 
-        const handleStatusClick = () => {
+        const handleStatusClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
             if (!canChangeStatus) return;
             
             if (order.estado === OrderStatus.LISTO) {
@@ -1518,6 +1519,7 @@ export const OrdersPage: React.FC = () => {
                             <select
                                 value={order.mozo_id || ''}
                                 onChange={(e) => assignMozoToOrder(order.id, e.target.value || null)}
+                                onClick={(e) => e.stopPropagation()}
                                 className="w-full max-w-[150px] truncate px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
                             >
                                 <option value="">Sin Asignar</option>
@@ -1529,6 +1531,7 @@ export const OrdersPage: React.FC = () => {
                                 onChange={(e) => {
                                     if (e.target.value) assignRepartidor(order.id, e.target.value);
                                 }}
+                                onClick={(e) => e.stopPropagation()}
                                 className="w-full max-w-[150px] truncate px-2 py-1 text-xs bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-500 text-blue-700 dark:text-blue-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                                 <option value="">Asignar Repartidor</option>
@@ -1557,7 +1560,7 @@ export const OrdersPage: React.FC = () => {
                     </button>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                    <button onClick={() => onViewDetails(order)} className="text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); onViewDetails(order); }} className="text-blue-500 hover:text-blue-700 flex items-center gap-1">
                         <List className="h-4 w-4" /> <span className="text-xs font-medium">Ver Ítems</span>
                     </button>
                 </td>
@@ -1565,22 +1568,22 @@ export const OrdersPage: React.FC = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end items-center space-x-4">
                         {showPayButton ? (
-                            <button onClick={onPayOrder} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs">
+                            <button onClick={(e) => { e.stopPropagation(); onPayOrder(); }} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs">
                                 Pagar
                             </button>
                         ) : canEdit ? (
                             <button 
-                                onClick={onEditOrder} 
+                                onClick={(e) => { e.stopPropagation(); onEditOrder(); }} 
                                 disabled={!canEditOrder}
                                 className="text-orange-600 hover:text-orange-900 disabled:text-gray-400 disabled:cursor-not-allowed">
                                 Editar
                             </button>
                         ) : (
-                            <a href="#" onClick={(e) => { e.preventDefault(); onEditOrder(); }} className="text-orange-600 hover:text-orange-900">Ver</a>
+                            <a href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditOrder(); }} className="text-orange-600 hover:text-orange-900">Ver</a>
                         )}
                         {canCancel && (
                              <button
-                                onClick={() => handleCancelOrder(order)}
+                                onClick={(e) => { e.stopPropagation(); handleCancelOrder(order); }}
                                 disabled={!isCancellable}
                                 className="text-red-600 hover:text-red-900 disabled:text-gray-400 disabled:cursor-not-allowed"
                                 title={isCancellable ? 'Cancelar Pedido' : 'Solo se pueden cancelar pedidos en estado NUEVO o EN PREPARACIÓN.'}
