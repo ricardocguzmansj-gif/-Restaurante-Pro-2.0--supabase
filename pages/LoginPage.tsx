@@ -1,12 +1,12 @@
 
 import React, { useState } from 'react';
-import { Pizza, Loader2, Eye, EyeOff, X, Mail, ArrowRight, CheckCircle, AlertTriangle, Database, Copy, FileCode } from 'lucide-react';
+import { Pizza, Loader2, Eye, EyeOff, X, Mail, ArrowRight, CheckCircle, AlertTriangle, Database, Copy, FileCode, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 
 // SQL Script for initial setup - UPDATED TO DISABLE RLS FOR INSTANT DATA ACCESS
 const SUPABASE_SCHEMA_SQL = `
 -- CREACIÓN DE TABLAS Y RELACIONES PARA RESTAURANTE PRO 2.0
--- Script Actualizado: DESHABILITA RLS e INCLUYE DATOS DE DEMOSTRACIÓN.
+-- Script Actualizado: DESHABILITA RLS e INCLUYE DATOS DE DEMOSTRACIÓN Y MIGRACIONES.
 
 -- =============================================================================
 -- 1. LIMPIEZA Y PREPARACIÓN
@@ -52,8 +52,17 @@ create table if not exists categories (
   restaurant_id text references restaurants(id) on delete cascade,
   nombre text not null,
   orden integer default 0,
+  parent_id text references categories(id) on delete cascade,
   created_at timestamp with time zone default now()
 );
+
+-- MIGRACIÓN: Asegurar que parent_id exista en categories (para bases de datos existentes)
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'categories' AND column_name = 'parent_id') THEN 
+        ALTER TABLE categories ADD COLUMN parent_id text references categories(id) on delete cascade; 
+    END IF; 
+END $$;
 
 create table if not exists ingredients (
   id text primary key,
@@ -310,13 +319,20 @@ const DatabaseSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
                 <div className="p-6 overflow-y-auto">
                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
-                        <p className="text-sm text-blue-800 dark:text-blue-300">
-                            <strong>Instrucciones:</strong> Si no ves datos o no puedes iniciar sesión, ejecuta este script en el <strong>SQL Editor</strong> de Supabase. Este script <strong>DESHABILITA</strong> las políticas de seguridad (RLS) para asegurar que la app funcione inmediatamente sin conflictos de permisos y crea datos de demostración.
+                        <p className="text-sm text-blue-800 dark:text-blue-300 font-bold mb-2">
+                            Instrucciones para corregir errores (ej. "Could not find parent_id"):
                         </p>
-                        <ul className="list-disc list-inside text-sm text-blue-800 dark:text-blue-300 mt-2 ml-2">
-                            <li>Usuario Admin: <strong>demo@restaurante.com</strong> (Clave: <strong>123456</strong>)</li>
-                            <li>Usuario Super Admin: <strong>admin@restaurante.com</strong> (Clave: <strong>123456</strong>)</li>
-                        </ul>
+                        <ol className="list-decimal list-inside text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                            <li>Copia el script SQL de abajo.</li>
+                            <li>Ve a tu proyecto en Supabase > <strong>SQL Editor</strong> > Pegar y ejecutar.</li>
+                            <li className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                                <span className="font-bold text-red-600 dark:text-red-400">IMPORTANTE - Si persiste el error de columnas:</span>
+                                <ul className="list-disc list-inside ml-4 mt-1 text-gray-700 dark:text-gray-300">
+                                    <li>Ve a <strong>Settings (Engranaje)</strong> &gt; <strong>API</strong>.</li>
+                                    <li>En la sección "Schema Cache", haz clic en el botón <strong>Reload</strong>.</li>
+                                </ul>
+                            </li>
+                        </ol>
                     </div>
                     
                     <div className="relative">
@@ -350,13 +366,18 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [isDbSetupOpen, setIsDbSetupOpen] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError(null);
     if (!email || !password) return;
     setIsLoading(true);
 
-    await login(email, password);
+    const success = await login(email, password);
+    if (!success) {
+        setLoginError("La contraseña no coincide o el usuario no existe.");
+    }
     setIsLoading(false);
   };
 
@@ -388,8 +409,8 @@ export const LoginPage: React.FC = () => {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={inputClasses}
+                onChange={(e) => { setEmail(e.target.value); setLoginError(null); }}
+                className={`${inputClasses} ${loginError ? 'border-red-500 focus:ring-red-500' : ''}`}
                 placeholder="admin@restaurante.com"
                 disabled={isLoading}
               />
@@ -407,8 +428,8 @@ export const LoginPage: React.FC = () => {
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`${inputClasses} pr-10`}
+                onChange={(e) => { setPassword(e.target.value); setLoginError(null); }}
+                className={`${inputClasses} pr-10 ${loginError ? 'border-red-500 focus:ring-red-500' : ''}`}
                 placeholder="••••••••"
                 disabled={isLoading}
               />
@@ -421,6 +442,13 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {loginError && (
+            <div className="flex items-center p-3 text-sm text-red-800 border border-red-300 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400 dark:border-red-800" role="alert">
+                <AlertCircle className="flex-shrink-0 inline w-4 h-4 mr-2" />
+                <span className="font-medium">Error:</span>&nbsp;{loginError}
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="text-sm">

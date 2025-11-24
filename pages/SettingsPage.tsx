@@ -351,7 +351,7 @@ const TaxesAndTipsTab: React.FC = () => {
 // SQL Script for initial setup - UPDATED WITH SEED DATA
 const SUPABASE_SCHEMA_SQL = `
 -- CREACIÓN DE TABLAS Y RELACIONES PARA RESTAURANTE PRO 2.0
--- Script Actualizado: DESHABILITA RLS e INCLUYE DATOS DE DEMOSTRACIÓN.
+-- Script Actualizado: DESHABILITA RLS e INCLUYE DATOS DE DEMOSTRACIÓN Y MIGRACIONES.
 
 -- =============================================================================
 -- 1. LIMPIEZA Y PREPARACIÓN
@@ -397,8 +397,17 @@ create table if not exists categories (
   restaurant_id text references restaurants(id) on delete cascade,
   nombre text not null,
   orden integer default 0,
+  parent_id text references categories(id) on delete cascade,
   created_at timestamp with time zone default now()
 );
+
+-- MIGRACIÓN: Asegurar que parent_id exista en categories (para bases de datos existentes)
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'categories' AND column_name = 'parent_id') THEN 
+        ALTER TABLE categories ADD COLUMN parent_id text references categories(id) on delete cascade; 
+    END IF; 
+END $$;
 
 create table if not exists ingredients (
   id text primary key,
@@ -529,6 +538,13 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 `;
 
+const CATEGORIES_FIX_SQL = `DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'categories' AND column_name = 'parent_id') THEN 
+        ALTER TABLE categories ADD COLUMN parent_id text references categories(id) on delete cascade; 
+    END IF; 
+END $$;`;
+
 export const AdvancedSettingsTab: React.FC = () => {
     const [showSql, setShowSql] = useState(false);
     const { showToast } = useAppContext();
@@ -538,12 +554,30 @@ export const AdvancedSettingsTab: React.FC = () => {
         showToast("SQL copiado al portapapeles.");
     };
 
+    const handleCopyFix = () => {
+        navigator.clipboard.writeText(CATEGORIES_FIX_SQL);
+        showToast("Script de corrección copiado.");
+    };
+
     return (
         <div className="space-y-8">
              <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                      <Database className="h-6 w-6 text-blue-600" /> Configuración de Base de Datos (Supabase)
                  </h2>
+                 
+                 <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+                    <h4 className="font-bold text-yellow-800 dark:text-yellow-200 mb-2">¿Problemas con Categorías?</h4>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+                        Si recibes errores al crear subcategorías (e.g., "Could not find parent_id"), ejecuta este script en Supabase y luego <strong>recarga el Schema Cache</strong>.
+                    </p>
+                    <button 
+                        onClick={handleCopyFix}
+                        className="px-3 py-1.5 bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-800 dark:hover:bg-yellow-700 text-yellow-800 dark:text-yellow-100 text-xs font-semibold rounded border border-yellow-300 dark:border-yellow-600 flex items-center gap-2"
+                    >
+                        <Copy className="h-3 w-3" /> Copiar Script Corrección
+                    </button>
+                 </div>
                  
                  {/* Sección de SQL Generator */}
                  <div className="mt-6 pt-6 border-t dark:border-gray-700">
@@ -559,6 +593,11 @@ export const AdvancedSettingsTab: React.FC = () => {
                          <div className="mt-3 animate-fade-in-down">
                              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                                  Copia y ejecuta este script en el <strong>SQL Editor</strong> de tu proyecto en Supabase para crear todas las tablas, <strong className="text-orange-500">corregir errores de permisos (54001)</strong> y crear usuarios demo.
+                             </p>
+                             <p className="text-sm font-bold text-red-600 dark:text-red-400 mb-4">
+                                IMPORTANTE: Si ves errores tipo "Could not find the 'parent_id' column...":
+                                <br/>
+                                Ve a Supabase &gt; Project Settings (Engranaje) &gt; API &gt; Schema Cache y haz clic en el botón <strong>RELOAD</strong>.
                              </p>
                              <div className="relative">
                                 <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto h-64">

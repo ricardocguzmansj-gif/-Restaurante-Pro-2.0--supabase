@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useAppContext } from '../contexts/AppContext';
 import { Ingredient, UserRole, IngredientCategory } from '../types';
-import { PlusCircle, X, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, X, Edit, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { formatCurrency } from '../utils';
 
 const IngredientModal: React.FC<{
@@ -20,6 +20,7 @@ const IngredientModal: React.FC<{
         coste_unitario: ingredient?.coste_unitario || 0,
         categoria: ingredient?.categoria || IngredientCategory.GENERAL,
     });
+    const [isSaving, setIsSaving] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -29,7 +30,7 @@ const IngredientModal: React.FC<{
         }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         const normalizedName = formData.nombre.trim().toLowerCase();
@@ -47,17 +48,25 @@ const IngredientModal: React.FC<{
             return;
         }
 
-        if (ingredient) {
-            onSave({ ...ingredient, ...formData });
-        } else {
-            onSave(formData);
+        setIsSaving(true);
+        try {
+            if (ingredient) {
+                await onSave({ ...ingredient, ...formData });
+            } else {
+                await onSave(formData);
+            }
+            onClose();
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const inputClasses = "mt-1 block w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500";
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
                 <form onSubmit={handleSubmit}>
                     <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
@@ -67,7 +76,7 @@ const IngredientModal: React.FC<{
                     <div className="p-6 space-y-4">
                         <div>
                             <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Ingrediente</label>
-                            <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required className={inputClasses} />
+                            <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required className={inputClasses} autoFocus />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div>
@@ -101,7 +110,8 @@ const IngredientModal: React.FC<{
                         </div>
                     </div>
                     <div className="px-6 py-3 bg-gray-50 dark:bg-gray-700/50 text-right">
-                        <button type="submit" className="px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600">
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2 ml-auto">
+                            {isSaving && <Loader2 className="h-4 w-4 animate-spin"/>}
                             {ingredient ? 'Guardar Cambios' : 'Crear Ingrediente'}
                         </button>
                     </div>
@@ -117,7 +127,7 @@ const DeleteConfirmModal: React.FC<{
     onConfirm: () => void;
 }> = ({ ingredient, onClose, onConfirm }) => {
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
                 <div className="p-6 text-center">
                     <Trash2 className="h-12 w-12 text-red-500 mx-auto mb-4" />
@@ -193,7 +203,12 @@ export const InventoryPage: React.FC = () => {
 
     const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE].includes(user.rol);
     
-    const filteredIngredients = ingredients.filter(i => i.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
+    // Ensure ingredients is always an array
+    const safeIngredients = Array.isArray(ingredients) ? ingredients : [];
+    
+    const filteredIngredients = safeIngredients.filter(i => 
+        i && i.nombre && i.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     useEffect(() => {
         setCurrentPage(1);
@@ -226,8 +241,7 @@ export const InventoryPage: React.FC = () => {
         } else {
             await createIngredient(data);
         }
-        setIsModalOpen(false);
-        setEditingIngredient(null);
+        // Modal closing is handled inside IngredientModal for create/edit
     };
     
     return (

@@ -1,6 +1,6 @@
 
 import { UserRole, OrderStatus, OrderType, TableStatus } from './types';
-import { BarChart2, Boxes, ChefHat, LayoutDashboard, ListOrdered, LucideIcon, Percent, Settings, ShoppingCart, Truck, Users } from 'lucide-react';
+import { BarChart2, Boxes, ChefHat, LayoutDashboard, ListOrdered, LucideIcon, Percent, Settings, ShoppingCart, Truck, Users, Tags } from 'lucide-react';
 
 export const ROLES_HIERARCHY: { [key in UserRole]: string[] } = {
   [UserRole.SUPER_ADMIN]: [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO, UserRole.COCINA, UserRole.REPARTO],
@@ -18,6 +18,7 @@ export const NAVIGATION_ITEMS: { label: string; href: string; icon: LucideIcon; 
     { label: 'Salón', href: '/salon', icon: LayoutDashboard, roles: [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO] },
     { label: 'GIC', href: '/gic', icon: ChefHat, roles: [UserRole.ADMIN, UserRole.GERENTE, UserRole.COCINA] },
     { label: 'Menú', href: '/menu', icon: ListOrdered, roles: [UserRole.ADMIN, UserRole.GERENTE] },
+    { label: 'Categorías', href: '/categorias', icon: Tags, roles: [UserRole.ADMIN, UserRole.GERENTE] },
     { label: 'Inventario', href: '/inventario', icon: Boxes, roles: [UserRole.ADMIN, UserRole.GERENTE] },
     { label: 'Clientes', href: '/clientes', icon: Users, roles: [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO] },
     { label: 'Cupones', href: '/cupones', icon: Percent, roles: [UserRole.ADMIN, UserRole.GERENTE] },
@@ -38,9 +39,9 @@ export const ORDER_STATUS_COLORS: { [key in OrderStatus]: string } = {
 };
 
 export const TABLE_STATUS_COLORS: { [key in TableStatus]: { bg: string; text: string; border: string } } = {
-    [TableStatus.LIBRE]: { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-800 dark:text-green-200', border: 'border-green-500' },
-    [TableStatus.OCUPADA]: { bg: 'bg-orange-100 dark:bg-orange-900/40', text: 'text-orange-800 dark:text-orange-200', border: 'border-orange-500' },
-    [TableStatus.NECESITA_LIMPIEZA]: { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-800 dark:text-red-200', border: 'border-red-500' },
+    [TableStatus.LIBRE]: { bg: 'bg-green-500', text: 'text-white', border: 'border-green-600' },
+    [TableStatus.OCUPADA]: { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-600' },
+    [TableStatus.NECESITA_LIMPIEZA]: { bg: 'bg-red-500', text: 'text-white', border: 'border-red-600' },
 };
 
 

@@ -9,7 +9,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 interface AppContextType {
   user: User | null;
   users: User[];
-  login: (email: string, password_provided: string) => Promise<void>;
+  login: (email: string, password_provided: string) => Promise<boolean>;
   logout: () => void;
   recoverPassword: (email: string) => Promise<string>;
   currentRestaurantId: string | null;
@@ -51,11 +51,11 @@ interface AppContextType {
   updateMenuItem: (itemData: MenuItem) => Promise<void>;
   deleteMenuItem: (itemId: string) => Promise<void>;
   restoreMenuItem: (itemId: string) => Promise<void>;
-  updateCategories: (categories: MenuCategory[]) => Promise<void>;
-  createCategory: (name: string) => Promise<void>;
+  updateCategories: (categories: MenuCategory[]) => Promise<boolean>;
+  createCategory: (name: string, parentId?: string | null) => Promise<MenuCategory | null>;
   deleteCategory: (id: string) => Promise<void>;
   updateRestaurantSettings: (settings: RestaurantSettings, restaurantId?: string) => Promise<void>;
-  cleanTable: (tableId: number) => Promise<void>;
+  cleanTable: (tableId: string | number) => Promise<void>;
   saveTableLayout: (tables: Table[]) => Promise<void>;
   updateTable: (table: Table) => Promise<void>;
   createIngredient: (data: Omit<Ingredient, 'id' | 'restaurant_id'>) => Promise<void>;
@@ -87,13 +87,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const subscriptionRef = useRef<RealtimeChannel | null>(null);
 
-  const isOnline = true; // Always true in production configuration
+  const isOnline = true;
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-      const newToast: Toast = { id: Date.now(), message, type };
+      let safeMessage = 'Operación realizada';
+      
+      if (typeof message === 'string') {
+          safeMessage = message;
+      } else if (message && typeof message === 'object') {
+          safeMessage = (message as any).message || 
+                        (message as any).error_description || 
+                        (message as any).details || 
+                        JSON.stringify(message);
+      }
+      
+      const newToast: Toast = { id: Date.now(), message: safeMessage, type };
       setToast(newToast);
-      setTimeout(() => setToast(prev => (prev?.id === newToast.id ? null : prev)), 3000);
+      setTimeout(() => setToast(prev => (prev?.id === newToast.id ? null : prev)), 5000);
   }, []);
+
+  const handleError = useCallback((error: any, defaultMsg: string) => {
+      console.error("AppContext Error:", defaultMsg, error);
+      let msg = defaultMsg;
+      
+      if (error) {
+          let errorText = null;
+          if (typeof error === 'string') {
+              errorText = error;
+          } else if (typeof error === 'object') {
+              errorText = error.message || error.error_description || error.details || JSON.stringify(error);
+          }
+
+          if (errorText && typeof errorText === 'string') {
+              if (errorText.includes("Could not find the") && errorText.includes("parent_id")) {
+                  msg = "⚠️ ERROR DB: Falta columna 'parent_id'. Ve a Supabase > Settings > API > Schema Cache y pulsa 'Reload'.";
+              } else if (errorText !== '{}') {
+                  msg = `${defaultMsg}: ${errorText}`;
+              }
+          }
+      }
+      showToast(msg, "error");
+  }, [showToast]);
 
   const loadInitialData = useCallback(async (restaurantId: string) => {
     try {
@@ -119,14 +153,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setTables(tablesData);
       setIngredients(ingredientsData);
     } catch (error: any) {
-      console.error("Failed to load initial data", error);
-      showToast(`Error al conectar con la base de datos: ${error.message || 'Desconocido'}`, "error");
+      handleError(error, "Error al conectar con la base de datos");
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [handleError]);
 
-  // Initial load for restaurants for Super Admin context
   useEffect(() => {
       const loadRestaurants = async () => {
           try {
@@ -139,7 +171,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       loadRestaurants();
   }, []);
 
-  // Load data when restaurant ID changes
   useEffect(() => {
     if (currentRestaurantId) {
         loadInitialData(currentRestaurantId);
@@ -158,10 +189,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [currentRestaurantId, loadInitialData, user]);
 
-  // Setup Realtime Subscription for Orders
+  // Realtime orders
   useEffect(() => {
     if (!currentRestaurantId) return;
-    
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
@@ -206,7 +236,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCurrentRestaurantId(restaurantId);
   };
 
-  const login = async (email: string, password_provided: string) => {
+  const login = async (email: string, password_provided: string): Promise<boolean> => {
     try {
         const selectedUser = await api.login(email, password_provided);
         if (selectedUser) {
@@ -216,12 +246,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           } else {
               setCurrentRestaurantId(selectedUser.restaurant_id);
           }
+          return true;
         } else {
-          showToast("Email o contraseña incorrectos", "error");
+          return false;
         }
     } catch (e: any) {
-        console.error(e);
-        showToast(e.message || "Error de conexión al iniciar sesión", "error");
+        handleError(e, "Error de conexión al iniciar sesión");
+        return false;
     }
   };
 
@@ -235,10 +266,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const allItemsForDisplay = useMemo(() => {
-    if (!menuItems.length) {
-        return [];
-    }
-    
+    if (!menuItems.length) return [];
     const ingredientsMap: Map<string, Ingredient> = new Map(ingredients.map(i => [i.id, i]));
 
     return menuItems.map(item => {
@@ -264,17 +292,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         
         const stockActual = canMake === Infinity ? null : canMake;
-
         if (!item.permite_venta_sin_stock && stockActual !== null && stockActual <= 0) {
             isAvailable = false;
         }
         
-        return {
-            ...item,
-            coste: calculatedCost,
-            stock_actual: stockActual,
-            disponible: isAvailable,
-        };
+        return { ...item, coste: calculatedCost, stock_actual: stockActual, disponible: isAvailable };
     });
   }, [menuItems, ingredients]);
 
@@ -303,8 +325,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       showToast(`Pedido #${orderId} actualizado a ${newStatus}`);
     } catch (error) {
-      console.error(error);
-      showToast("Error al actualizar el pedido", "error");
+      handleError(error, "Error al actualizar el pedido");
     }
   };
   
@@ -312,9 +333,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!currentRestaurantId) return;
     try {
         const updatedOrder = await api.cancelOrder(orderId);
-        setOrders(prevOrders => prevOrders.map(order =>
-            order.id === orderId ? updatedOrder : order
-        ));
+        setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? updatedOrder : order));
         
         const [updatedIngredients, updatedUsers, updatedTables] = await Promise.all([
             api.getIngredients(currentRestaurantId),
@@ -326,8 +345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTables(updatedTables);
         showToast(`Pedido #${orderId} ha sido cancelado.`);
     } catch (error: any) {
-        console.error(error);
-        showToast(error.message || "Error al cancelar el pedido", "error");
+        handleError(error, "Error al cancelar el pedido");
     }
   };
 
@@ -343,22 +361,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newOrder = await api.createOrder({ ...orderData, creado_por_id: user.id, mozo_id, restaurant_id: currentRestaurantId });
       setOrders(prevOrders => [newOrder, ...prevOrders]);
 
-      if (newOrder.tipo === OrderType.SALA && newOrder.table_id) {
-          const tableToUpdate = tables.find(t => t.id === newOrder.table_id);
+      // LÓGICA MESA: Crear Pedido -> OCUPADA (NARANJA)
+      // Buscamos la mesa por table_number (ya que la BD lo usa) pero actualizamos por ID real
+      if (isSalaOrder && newOrder.table_id) {
+          const tableToUpdate = tables.find(t => t.table_number === newOrder.table_id);
           if (tableToUpdate) {
-              await updateTable({
+              // Forzamos actualización en BD
+              const updatedTablePayload = {
                   ...tableToUpdate,
-                  estado: TableStatus.OCUPADA,
+                  estado: TableStatus.OCUPADA, // Naranja
                   order_id: newOrder.id,
-                  mozo_id: user.id
-              });
+                  mozo_id: mozo_id || tableToUpdate.mozo_id // Mantener mozo si ya estaba asignado o usar el actual
+              };
+              await api.updateTable(updatedTablePayload);
+              
+              // Actualizamos estado local inmediatamente
+              setTables(prev => prev.map(t => t.id === tableToUpdate.id ? updatedTablePayload : t));
           }
       }
       showToast(`Pedido #${newOrder.id} creado.`);
       return newOrder;
     } catch (error) {
-      console.error(error);
-      showToast("Error al crear el pedido", "error");
+      handleError(error, "Error al crear el pedido");
       return null;
     }
   };
@@ -370,8 +394,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast(`Pedido #${newOrder.id} recibido. ¡Gracias!`);
       return newOrder;
     } catch (error) {
-      console.error(error);
-      showToast("Error al crear el pedido", "error");
+      handleError(error, "Error al crear el pedido");
       return null;
     }
   };
@@ -384,8 +407,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast(`Cliente '${newCustomer.nombre}' creado con éxito.`);
       return newCustomer;
     } catch (error) {
-      console.error(error);
-      showToast("Error al crear el cliente", "error");
+      handleError(error, "Error al crear el cliente");
       return null;
     }
   };
@@ -396,7 +418,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
       showToast(`Cliente '${updatedCustomer.nombre}' actualizado.`);
     } catch (error) {
-      showToast("Error al actualizar el cliente", "error");
+      handleError(error, "Error al actualizar el cliente");
     }
   };
   
@@ -406,79 +428,358 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCustomers(prev => prev.filter(c => c.id !== customerId));
       showToast(`Cliente desactivado.`);
     } catch (error) {
-      showToast("Error al desactivar cliente", "error");
+      handleError(error, "Error al desactivar cliente");
     }
   };
 
   const findCustomerByContact = async (contact: string) => api.findCustomerByContact(currentRestaurantId || '', contact);
-  const verifyCustomer = async (id: string) => { await api.verifyCustomer(id); setCustomers(prev => prev.map(c => c.id === id ? {...c, is_verified: true} : c)); };
+  const verifyCustomer = async (id: string) => { 
+      try {
+        await api.verifyCustomer(id); 
+        setCustomers(prev => prev.map(c => c.id === id ? {...c, is_verified: true} : c));
+        showToast("Cliente verificado.");
+      } catch(error) {
+          handleError(error, "Error al verificar cliente");
+      }
+  };
   
-  const updateOrder = async (id: number, data: any) => {
-      const updated = await api.updateOrder(id, data);
-      setOrders(prev => prev.map(o => o.id === id ? updated : o));
+  const updateOrder = async (id: number, orderData: any) => {
+      try {
+        const updated = await api.updateOrder(id, orderData);
+        setOrders(prev => prev.map(o => o.id === id ? updated : o));
+      } catch(error) {
+          handleError(error, "Error al actualizar el pedido");
+      }
   };
   const assignRepartidor = async (id: number, repId: string) => {
-      const updated = await api.assignRepartidorToOrder(id, repId);
-      setOrders(prev => prev.map(o => o.id === id ? updated : o));
-      if(currentRestaurantId) setUsers(await api.getUsers(currentRestaurantId));
+      try {
+        const updated = await api.assignRepartidorToOrder(id, repId);
+        setOrders(prev => prev.map(o => o.id === id ? updated : o));
+        if(currentRestaurantId) setUsers(await api.getUsers(currentRestaurantId));
+        showToast("Repartidor asignado.");
+      } catch(error) {
+          handleError(error, "Error al asignar repartidor");
+      }
   };
   const assignMozoToOrder = async (id: number, mozoId: string|null) => {
-       await api.updateOrder(id, { mozo_id: mozoId });
-       setOrders(prev => prev.map(o => o.id === id ? {...o, mozo_id: mozoId} : o));
+       try {
+        await api.updateOrder(id, { mozo_id: mozoId });
+        setOrders(prev => prev.map(o => o.id === id ? {...o, mozo_id: mozoId} : o));
+        showToast("Mozo asignado.");
+       } catch(error) {
+           handleError(error, "Error al asignar mozo");
+       }
   };
   
   const createCoupon = async (data: any) => { 
       if(!currentRestaurantId) return;
-      const newC = await api.createCoupon({...data, restaurant_id: currentRestaurantId}); 
-      setCoupons(prev => [newC, ...prev]);
+      try {
+        const newC = await api.createCoupon({...data, restaurant_id: currentRestaurantId}); 
+        setCoupons(prev => [newC, ...prev]);
+        showToast("Cupón creado correctamente.");
+      } catch (error: any) {
+        handleError(error, "Error al crear el cupón");
+      }
   };
-  const updateCoupon = async (data: any) => { const updated = await api.updateCoupon(data); setCoupons(prev => prev.map(c => c.id === data.id ? updated : c)); };
-  const deleteCoupon = async (id: string) => { await api.deleteCoupon(id); setCoupons(prev => prev.filter(c => c.id !== id)); };
+  const updateCoupon = async (data: any) => { 
+      try {
+        const updated = await api.updateCoupon(data); 
+        setCoupons(prev => prev.map(c => c.id === data.id ? updated : c));
+        showToast("Cupón actualizado.");
+      } catch(error) {
+          handleError(error, "Error al actualizar cupón");
+      }
+  };
+  const deleteCoupon = async (id: string) => { 
+      try {
+        await api.deleteCoupon(id); 
+        setCoupons(prev => prev.filter(c => c.id !== id)); 
+        showToast("Cupón eliminado.");
+      } catch(error) {
+          handleError(error, "Error al eliminar cupón");
+      }
+  };
   
   const generatePaymentQR = async (id: number, amt: number) => { const res = await api.generatePaymentQR(id, amt); return (res as any).last_qr_code_url; };
-  const addPaymentToOrder = async (id: number, method: any, amt: number) => { 
-      const updated = await api.addPaymentToOrder(id, method, amt); 
-      setOrders(prev => prev.map(o => o.id === id ? updated : o));
+  
+  const addPaymentToOrder = async (orderId: number, method: any, amount: number) => { 
+      try {
+        const { data: order } = await getSupabaseClient()!.from('orders').select('payments, total, tipo, table_id').eq('id', orderId).single();
+        if (!order) throw new Error("Order not found");
+
+        const newPayment = {
+            status: 'PAGADO',
+            method,
+            amount,
+            creado_en: new Date().toISOString()
+        };
+        const updatedPayments = [...(order.payments || []), newPayment];
+        const totalPaid = updatedPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        
+        let updatePayload: any = { payments: updatedPayments };
+
+        // Si se ha pagado el total
+        if (totalPaid >= order.total) {
+             if (order.tipo === OrderType.SALA) {
+                 updatePayload.estado = OrderStatus.ENTREGADO;
+                 // LÓGICA MESA: Pagado -> NECESITA_LIMPIEZA (ROJO)
+                 if (order.table_id) {
+                     // Importante: Buscar la mesa por table_number
+                     const existingTable = tables.find(t => t.table_number === order.table_id);
+                     if (existingTable) {
+                         const updatedTablePayload = { 
+                             ...existingTable, 
+                             estado: TableStatus.NECESITA_LIMPIEZA 
+                         } as Table;
+                         
+                         await api.updateTable(updatedTablePayload);
+                         setTables(prev => prev.map(t => t.id === existingTable.id ? { ...t, estado: TableStatus.NECESITA_LIMPIEZA } : t));
+                     }
+                 }
+             } else {
+                 updatePayload.estado = OrderStatus.NUEVO;
+             }
+        }
+
+        const { data: updatedOrder, error } = await getSupabaseClient()!.from('orders').update(updatePayload).eq('id', orderId).select().single();
+        if (error) throw error;
+
+        setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+        showToast("Pago registrado.");
+      } catch(error) {
+          handleError(error, "Error al registrar pago");
+      }
   };
   
-  const createUser = async (data: any) => { if(!currentRestaurantId) return; const u = await api.createUser({...data, restaurant_id: currentRestaurantId}); setUsers(prev => [...prev, u]); };
-  const updateUser = async (data: any) => { const u = await api.updateUser(data); setUsers(prev => prev.map(x => x.id === data.id ? u : x)); };
-  const deleteUser = async (id: string) => { await api.deleteUser(id); setUsers(prev => prev.filter(x => x.id !== id)); };
+  const createUser = async (data: any) => { 
+      if(!currentRestaurantId) return; 
+      try {
+        const u = await api.createUser({...data, restaurant_id: currentRestaurantId}); 
+        setUsers(prev => [...prev, u]); 
+        showToast("Usuario creado correctamente.");
+      } catch(error) {
+          handleError(error, "Error al crear usuario");
+      }
+  };
+  const updateUser = async (data: any) => { 
+      try {
+        const u = await api.updateUser(data); 
+        setUsers(prev => prev.map(x => x.id === data.id ? u : x)); 
+        showToast("Usuario actualizado.");
+      } catch(error) {
+          handleError(error, "Error al actualizar usuario");
+      }
+  };
+  const deleteUser = async (id: string) => { 
+      try {
+        await api.deleteUser(id); 
+        setUsers(prev => prev.filter(x => x.id !== id)); 
+        showToast("Usuario eliminado.");
+      } catch(error) {
+          handleError(error, "Error al eliminar usuario");
+      }
+  };
   
-  const createMenuItem = async (data: any) => { if(!currentRestaurantId) return; const m = await api.createMenuItem({...data, restaurant_id: currentRestaurantId}); setMenuItems(prev => [...prev, m]); };
-  const updateMenuItem = async (data: any) => { const m = await api.updateMenuItem(data); setMenuItems(prev => prev.map(x => x.id === data.id ? m : x)); };
-  const deleteMenuItem = async (id: string) => { const m = await api.deleteMenuItem(id); setMenuItems(prev => prev.map(x => x.id === id ? m : x)); };
-  const restoreMenuItem = async (id: string) => { const m = await api.restoreMenuItem(id); setMenuItems(prev => prev.map(x => x.id === id ? m : x)); };
+  const createMenuItem = async (data: any) => { 
+      if(!currentRestaurantId) return; 
+      try {
+        const m = await api.createMenuItem({...data, restaurant_id: currentRestaurantId}); 
+        setMenuItems(prev => [...prev, m]); 
+        showToast("Producto creado correctamente.");
+      } catch (error: any) {
+        handleError(error, "Error al crear el producto");
+      }
+  };
+  const updateMenuItem = async (data: any) => { 
+      try {
+        const m = await api.updateMenuItem(data); 
+        setMenuItems(prev => prev.map(x => x.id === data.id ? m : x)); 
+        showToast("Producto actualizado.");
+      } catch(error) {
+          handleError(error, "Error al actualizar producto");
+      }
+  };
+  const deleteMenuItem = async (id: string) => { 
+      try {
+        const m = await api.deleteMenuItem(id); 
+        setMenuItems(prev => prev.map(x => x.id === id ? m : x)); 
+        showToast("Producto eliminado.");
+      } catch(error) {
+          handleError(error, "Error al eliminar producto");
+      }
+  };
+  const restoreMenuItem = async (id: string) => { 
+      try {
+        const m = await api.restoreMenuItem(id); 
+        setMenuItems(prev => prev.map(x => x.id === id ? m : x)); 
+        showToast("Producto restaurado.");
+      } catch(error) {
+          handleError(error, "Error al restaurar producto");
+      }
+  };
   
-  const updateCategories = async (cats: any[]) => { const newCats = await api.updateCategories(cats); setCategories(newCats); };
-  const createCategory = async (name: string) => { if(!currentRestaurantId) return; const c = await api.createCategory({nombre: name, restaurant_id: currentRestaurantId, orden: 99}); setCategories(prev => [...prev, c]); };
-  const deleteCategory = async (id: string) => { await api.deleteCategory(id); setCategories(prev => prev.filter(c => c.id !== id)); };
+  const updateCategories = async (cats: MenuCategory[]): Promise<boolean> => { 
+      try {
+        const updatedCats = await api.updateCategories(cats); 
+        setCategories(prev => {
+            const updatedMap = new Map(updatedCats.map(c => [c.id, c]));
+            const merged = prev.map(c => updatedMap.get(c.id) || c);
+            const existingIds = new Set(prev.map(c => c.id));
+            const newItems = updatedCats.filter(c => !existingIds.has(c.id));
+            return [...merged, ...newItems];
+        });
+        showToast("Categorías actualizadas.");
+        return true;
+      } catch(error) {
+          handleError(error, "Error al actualizar categorías");
+          return false;
+      }
+  };
+  
+  const createCategory = async (name: string, parentId: string | null = null): Promise<MenuCategory | null> => { 
+      if(!currentRestaurantId) return null; 
+      try {
+        const c = await api.createCategory({
+            nombre: name, 
+            restaurant_id: currentRestaurantId, 
+            orden: categories.length > 0 ? Math.max(...categories.map(c => c.orden)) + 1 : 0,
+            parent_id: parentId
+        }); 
+        setCategories(prev => [...prev, c]); 
+        showToast("Categoría creada correctamente.");
+        return c;
+      } catch (error: any) {
+        handleError(error, "Error al crear la categoría");
+        return null;
+      }
+  };
+  const deleteCategory = async (id: string) => { 
+      try {
+        await api.deleteCategory(id); 
+        setCategories(prev => {
+            const getIdsToRemove = (targetId: string, list: MenuCategory[]): string[] => {
+                const children = list.filter(c => c.parent_id === targetId);
+                let ids = [targetId];
+                children.forEach(c => {
+                    ids = [...ids, ...getIdsToRemove(c.id, list)];
+                });
+                return ids;
+            };
+            const idsToRemove = getIdsToRemove(id, prev);
+            return prev.filter(c => !idsToRemove.includes(c.id));
+        });
+        showToast("Categoría eliminada.");
+      } catch(error) {
+          handleError(error, "Error al eliminar categoría");
+      }
+  };
   
   const updateRestaurantSettings = async (s: any, rId?: string) => { 
       const target = rId || currentRestaurantId;
       if(!target) return;
-      const updated = await api.updateRestaurantSettings(target, s); 
-      if(target === currentRestaurantId) setRestaurantSettings(updated);
-  };
-  
-  const cleanTable = async (id: number) => {
-      if(!currentRestaurantId) return;
-      const targetTable = tables.find(t => t.id === id);
-      if(targetTable) {
-          const updated = await api.updateTable({...targetTable, estado: TableStatus.LIBRE, order_id: null, mozo_id: null});
-          setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
+      try {
+        const updated = await api.updateRestaurantSettings(target, s); 
+        if(target === currentRestaurantId) setRestaurantSettings(updated);
+        showToast("Configuración actualizada.");
+      } catch(error) {
+          handleError(error, "Error al actualizar configuración");
       }
   };
-  const saveTableLayout = async (tbls: any[]) => { const updated = await api.updateTablesLayout(tbls); setTables(updated); };
-  const updateTable = async (t: Table) => { const updated = await api.updateTable(t); setTables(prev => prev.map(x => x.id === updated.id ? updated : x)); };
   
-  const createIngredient = async (data: any) => { if(!currentRestaurantId) return; const i = await api.createIngredient({...data, restaurant_id: currentRestaurantId}); setIngredients(prev => [...prev, i]); };
-  const updateIngredient = async (data: any) => { const i = await api.updateIngredient(data); setIngredients(prev => prev.map(x => x.id === data.id ? i : x)); };
-  const deleteIngredient = async (id: string) => { await api.deleteIngredient(id); setIngredients(prev => prev.filter(x => x.id !== id)); };
+  // LÓGICA MESA: Limpiar -> LIBRE (Verde)
+  const cleanTable = async (id: string | number) => {
+      if(!currentRestaurantId) return;
+      try {
+        const targetTable = tables.find(t => t.id === id);
+        if(targetTable) {
+            // Update DB
+            const updated = await api.updateTable({
+                ...targetTable, 
+                estado: TableStatus.LIBRE, 
+                order_id: null, 
+                mozo_id: null
+            });
+            // Update Local State
+            setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
+            showToast("Mesa limpia y liberada.");
+        }
+      } catch(error) {
+          handleError(error, "Error al limpiar mesa");
+      }
+  };
   
-  const createRestaurant = async (s: any) => { const r = await api.createRestaurant(s); setRestaurants(prev => [...prev, r]); };
-  const deleteRestaurant = async (id: string) => { await api.deleteRestaurant(id); setRestaurants(prev => prev.filter(r => r.id !== id)); };
-  const updateUserLocation = async (id: string, lat: number, lng: number) => { await api.updateUserLocation(id, lat, lng); };
+  const saveTableLayout = async (tbls: any[]) => { 
+      try {
+        const updated = await api.updateTablesLayout(tbls); 
+        setTables(updated); 
+        showToast("Distribución guardada.");
+      } catch(error) {
+          handleError(error, "Error al guardar distribución");
+      }
+  };
+  const updateTable = async (t: Table) => { 
+      try {
+        const updated = await api.updateTable(t); 
+        setTables(prev => prev.map(x => x.id === updated.id ? updated : x)); 
+      } catch(error) {
+          handleError(error, "Error al actualizar mesa");
+      }
+  };
+  
+  const createIngredient = async (data: any) => { 
+      if(!currentRestaurantId) return; 
+      try {
+        const i = await api.createIngredient({...data, restaurant_id: currentRestaurantId}); 
+        setIngredients(prev => [...prev, i]); 
+        showToast("Ingrediente creado correctamente.");
+      } catch (error: any) {
+        handleError(error, "Error al crear el ingrediente");
+      }
+  };
+  const updateIngredient = async (data: any) => { 
+      try {
+        const i = await api.updateIngredient(data); 
+        setIngredients(prev => prev.map(x => x.id === data.id ? i : x)); 
+        showToast("Ingrediente actualizado.");
+      } catch(error) {
+          handleError(error, "Error al actualizar ingrediente");
+      }
+  };
+  const deleteIngredient = async (id: string) => { 
+      try {
+        await api.deleteIngredient(id); 
+        setIngredients(prev => prev.filter(x => x.id !== id)); 
+        showToast("Ingrediente eliminado.");
+      } catch(error) {
+          handleError(error, "Error al eliminar ingrediente");
+      }
+  };
+  
+  const createRestaurant = async (s: any) => { 
+      try {
+        const r = await api.createRestaurant(s); 
+        setRestaurants(prev => [...prev, r]); 
+        showToast("Restaurante creado.");
+      } catch(error) {
+          handleError(error, "Error al crear restaurante");
+      }
+  };
+  const deleteRestaurant = async (id: string) => { 
+      try {
+        await api.deleteRestaurant(id); 
+        setRestaurants(prev => prev.filter(r => r.id !== id)); 
+        showToast("Restaurante eliminado.");
+      } catch(error) {
+          handleError(error, "Error al eliminar restaurante");
+      }
+  };
+  const updateUserLocation = async (id: string, lat: number, lng: number) => { 
+      try {
+        await api.updateUserLocation(id, lat, lng); 
+      } catch(error) {
+          console.error("Error updating location", error);
+      }
+  };
 
   const value = {
     user, users, login, logout, recoverPassword, currentRestaurantId, switchRestaurant, restaurants, orders, tables, menuItems, processedMenuItems, allItemsForDisplay, categories, customers, coupons, ingredients, restaurantSettings, toast,

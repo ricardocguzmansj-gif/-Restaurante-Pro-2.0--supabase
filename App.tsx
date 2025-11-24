@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { KdsPage } from './pages/KdsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MenuPage } from './pages/MenuPage';
+import { CategoriesPage } from './pages/CategoriesPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { CouponsPage } from './pages/CouponsPage';
@@ -18,7 +19,7 @@ import { FloorPlanPage } from './pages/FloorPlanPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { CustomerPortalPage } from './pages/CustomerPortalPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
-import { Eye, EyeOff, Lock, LogOut } from 'lucide-react';
+import { Eye, EyeOff, Lock, LogOut, Key } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: UserRole[] }> = ({ children, allowedRoles }) => {
   const { user } = useAppContext();
@@ -47,6 +48,17 @@ const ForcePasswordChangePage: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
+    const generateSecurePassword = () => {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+        let pass = "";
+        for (let i = 0; i < 16; i++) {
+            pass += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        setNewPassword(pass);
+        setConfirmPassword(pass);
+        setShowPassword(true); 
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -68,7 +80,8 @@ const ForcePasswordChangePage: React.FC = () => {
                 password: newPassword,
                 must_change_password: false // Clear the flag
             });
-            showToast("Contraseña actualizada correctamente. Bienvenido.");
+            showToast("Contraseña actualizada. Por favor, inicia sesión con tu nueva contraseña.");
+            logout(); // Log out to force re-authentication with new password
         } catch (error) {
             console.error(error);
             showToast("Error al actualizar la contraseña.", "error");
@@ -92,7 +105,16 @@ const ForcePasswordChangePage: React.FC = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nueva Contraseña</label>
+                         <div className="flex justify-between items-center mb-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nueva Contraseña</label>
+                            <button 
+                                type="button" 
+                                onClick={generateSecurePassword}
+                                className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                            >
+                                <Key className="h-3 w-3" /> Sugerir Segura
+                            </button>
+                         </div>
                          <div className="mt-1 relative">
                             <input 
                                 type={showPassword ? "text" : "password"}
@@ -170,6 +192,7 @@ const AdminApp: React.FC = () => {
         <Route path="salon" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO, UserRole.SUPER_ADMIN]}><FloorPlanPage /></ProtectedRoute>} />
         <Route path="gic" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.COCINA, UserRole.SUPER_ADMIN]}><KdsPage /></ProtectedRoute>} />
         <Route path="menu" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.SUPER_ADMIN]}><MenuPage /></ProtectedRoute>} />
+        <Route path="categorias" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.SUPER_ADMIN]}><CategoriesPage /></ProtectedRoute>} />
         <Route path="inventario" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.SUPER_ADMIN]}><InventoryPage /></ProtectedRoute>} />
         <Route path="clientes" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO, UserRole.SUPER_ADMIN]}><CustomersPage /></ProtectedRoute>} />
         <Route path="cupones" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.GERENTE, UserRole.SUPER_ADMIN]}><CouponsPage /></ProtectedRoute>} />

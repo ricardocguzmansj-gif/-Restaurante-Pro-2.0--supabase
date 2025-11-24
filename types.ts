@@ -31,6 +31,7 @@ export interface MenuCategory {
   restaurant_id: string;
   nombre: string;
   orden: number;
+  parent_id?: string | null;
 }
 
 export enum IngredientCategory {
@@ -136,7 +137,7 @@ export enum TableStatus {
 }
 
 export interface Table {
-    id: number;
+    id: string | number;
     restaurant_id: string;
     nombre: string;
     estado: TableStatus;
@@ -145,6 +146,7 @@ export interface Table {
     x: number;
     y: number;
     shape: 'square' | 'rectangle-v' | 'rectangle-h';
+    table_number?: number;
 }
 
 
