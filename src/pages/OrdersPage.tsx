@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
@@ -8,7 +9,7 @@ import { ORDER_STATUS_COLORS, ORDER_TYPE_ICONS } from '../constants';
 import { 
     PlusCircle, Search, DollarSign, Ban, 
     CreditCard, Banknote, X, Edit, Minus, Plus, User as UserIcon,
-    AlertTriangle, History, FileText, Bike, QrCode, CheckCircle
+    AlertTriangle, History, FileText, Bike, QrCode, CheckCircle, Utensils, ShoppingBag, MapPin
 } from 'lucide-react';
 
 // --- Helper Components ---
@@ -56,27 +57,27 @@ const PaymentModal: React.FC<{
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
                 <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-semibold text-lg">Registrar Pago - Pedido #{order.id}</h3>
+                    <h3 className="font-semibold text-lg text-gray-900 dark:text-white">Registrar Pago - Pedido #{order.id}</h3>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="h-4 w-4" /></button>
                 </div>
                 <div className="p-6 space-y-4">
                     <div>
-                        <label className="block text-sm font-medium mb-1">Monto a Pagar</label>
+                        <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Monto a Pagar</label>
                         <input 
                             type="number" 
                             value={amount} 
                             onChange={(e) => setAmount(parseFloat(e.target.value))} 
-                            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium mb-1">Método de Pago</label>
+                        <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Método de Pago</label>
                         <div className="grid grid-cols-2 gap-2">
                             {['EFECTIVO', 'TARJETA', 'MERCADOPAGO', 'MODO', 'QR'].map(m => (
                                 <button 
                                     key={m}
                                     onClick={() => { setMethod(m as any); setQrUrl(null); }}
-                                    className={`p-2 text-sm border rounded flex items-center justify-center gap-2 ${method === m ? 'bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                                    className={`p-2 text-sm border rounded flex items-center justify-center gap-2 ${method === m ? 'bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}
                                 >
                                     {m === 'EFECTIVO' && <Banknote className="h-4 w-4"/>}
                                     {m === 'TARJETA' && <CreditCard className="h-4 w-4"/>}
@@ -103,7 +104,7 @@ const PaymentModal: React.FC<{
                     )}
                 </div>
                 <div className="p-4 border-t dark:border-gray-700 flex justify-end gap-2">
-                    <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-100 dark:hover:bg-gray-700">Cancelar</button>
+                    <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">Cancelar</button>
                     <button onClick={handleSubmit} disabled={isProcessing} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50">
                         Confirmar Pago
                     </button>
@@ -113,7 +114,7 @@ const PaymentModal: React.FC<{
     );
 };
 
-const CancelConfirmModal: React.FC<{
+export const CancelConfirmModal: React.FC<{
     order: Order;
     onClose: () => void;
     onConfirm: () => void;
@@ -143,148 +144,7 @@ const CancelConfirmModal: React.FC<{
     );
 };
 
-const CollectionsHistoryModal: React.FC<{
-    onClose: () => void;
-}> = ({ onClose }) => {
-    const { orders, users } = useAppContext();
-    const [searchTerm, setSearchTerm] = useState('');
-
-    const usersMap = useMemo(() => new Map(users.map(u => [u.id, u.nombre])), [users]);
-
-    // Flatten all payments from all orders
-    const allPayments = useMemo(() => {
-        const payments: Array<{
-            orderId: number;
-            paymentDate: string;
-            amount: number;
-            method: string;
-            mozoName: string;
-            customerName: string;
-        }> = [];
-
-        orders.forEach(order => {
-            if (order.payments && order.payments.length > 0) {
-                order.payments.forEach((p: any) => {
-                    payments.push({
-                        orderId: order.id,
-                        paymentDate: p.creado_en,
-                        amount: Number(p.amount) || 0,
-                        method: p.method,
-                        mozoName: order.mozo_id ? (usersMap.get(order.mozo_id) || 'Desconocido') : 'Sin Mozo',
-                        customerName: 'Cliente'
-                    });
-                });
-            }
-        });
-        
-        return payments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
-    }, [orders, usersMap]);
-
-    const filteredPayments = useMemo(() => {
-        return allPayments.filter(p => 
-            p.orderId.toString().includes(searchTerm) ||
-            p.mozoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.method.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [allPayments, searchTerm]);
-
-    const totalsByMethod = useMemo(() => {
-        return filteredPayments.reduce((acc: Record<string, number>, curr) => {
-            const method = String(curr.method); // Force string to prevent object errors
-            const currentTotal = acc[method] || 0;
-            acc[method] = currentTotal + curr.amount;
-            return acc;
-        }, {} as Record<string, number>);
-    }, [filteredPayments]);
-
-    const totalCollected = (Object.values(totalsByMethod) as number[]).reduce((acc, curr) => acc + curr, 0);
-
-    return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                        <History className="h-5 w-5 text-orange-500" />
-                        Historial de Cobranzas
-                    </h3>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="h-5 w-5" /></button>
-                </div>
-                
-                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 border-b dark:border-gray-700">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <Card className="p-3 bg-white dark:bg-gray-800 border-l-4 border-green-500">
-                            <p className="text-xs text-gray-500 uppercase">Total Recaudado</p>
-                            <p className="text-xl font-bold">{formatCurrency(totalCollected)}</p>
-                        </Card>
-                        {Object.entries(totalsByMethod).map(([method, amount]) => (
-                            <Card key={method} className="p-3 bg-white dark:bg-gray-800">
-                                <p className="text-xs text-gray-500 uppercase">{method}</p>
-                                <p className="text-lg font-semibold">{formatCurrency(amount)}</p>
-                            </Card>
-                        ))}
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Buscar por Pedido, Mozo o Método..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600"
-                        />
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-auto p-0">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Nº Pedido</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Método</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Mozo</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Monto</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {filteredPayments.map((payment, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                        <div className="flex flex-col">
-                                            <span>{formatDate(payment.paymentDate)}</span>
-                                            <span className="text-xs opacity-70">{new Date(payment.paymentDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">#{payment.orderId}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold">
-                                            {payment.method}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                        <UserIcon className="h-3 w-3" /> {payment.mozoName}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900 dark:text-white">
-                                        {formatCurrency(payment.amount)}
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredPayments.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                        No se encontraron registros de cobranzas.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const OrderEditorModal: React.FC<{
+export const OrderEditorModal: React.FC<{
     order: Order;
     onClose: () => void;
 }> = ({ order, onClose }) => {
@@ -671,6 +531,146 @@ export const OrderDetailsModal: React.FC<{
     );
 };
 
+const CollectionsHistoryModal: React.FC<{
+    onClose: () => void;
+}> = ({ onClose }) => {
+    const { orders, users } = useAppContext();
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const usersMap = useMemo(() => new Map(users.map(u => [u.id, u.nombre])), [users]);
+
+    const allPayments = useMemo(() => {
+        const payments: Array<{
+            orderId: number;
+            paymentDate: string;
+            amount: number;
+            method: string;
+            mozoName: string;
+            customerName: string;
+        }> = [];
+
+        orders.forEach(order => {
+            if (order.payments && order.payments.length > 0) {
+                order.payments.forEach((p: any) => {
+                    payments.push({
+                        orderId: order.id,
+                        paymentDate: p.creado_en,
+                        amount: Number(p.amount) || 0,
+                        method: p.method,
+                        mozoName: order.mozo_id ? (usersMap.get(order.mozo_id) || 'Desconocido') : 'Sin Mozo',
+                        customerName: 'Cliente'
+                    });
+                });
+            }
+        });
+        
+        return payments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+    }, [orders, usersMap]);
+
+    const filteredPayments = useMemo(() => {
+        return allPayments.filter(p => 
+            p.orderId.toString().includes(searchTerm) ||
+            p.mozoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.method.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [allPayments, searchTerm]);
+
+    const totalsByMethod = useMemo(() => {
+        return filteredPayments.reduce((acc: Record<string, number>, curr) => {
+            const method = String(curr.method);
+            const currentTotal = acc[method] || 0;
+            acc[method] = currentTotal + curr.amount;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [filteredPayments]);
+
+    const totalCollected = (Object.values(totalsByMethod) as number[]).reduce((acc, curr) => acc + curr, 0);
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+                    <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900 dark:text-white">
+                        <History className="h-5 w-5 text-orange-500" />
+                        Historial de Cobranzas
+                    </h3>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                
+                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 border-b dark:border-gray-700">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <Card className="p-3 bg-white dark:bg-gray-800 border-l-4 border-green-500">
+                            <p className="text-xs text-gray-500 uppercase">Total Recaudado</p>
+                            <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalCollected)}</p>
+                        </Card>
+                        {Object.entries(totalsByMethod).map(([method, amount]) => (
+                            <Card key={method} className="p-3 bg-white dark:bg-gray-800">
+                                <p className="text-xs text-gray-500 uppercase">{method}</p>
+                                <p className="text-lg font-semibold text-gray-900 dark:text-white">{formatCurrency(amount as number)}</p>
+                            </Card>
+                        ))}
+                    </div>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Buscar por Pedido, Mozo o Método..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-auto p-0">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fecha</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Nº Pedido</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Método</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Mozo</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {filteredPayments.map((payment, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <div className="flex flex-col">
+                                            <span>{new Date(payment.paymentDate).toLocaleDateString()}</span>
+                                            <span className="text-xs opacity-70">{new Date(payment.paymentDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">#{payment.orderId}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                            {payment.method}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                        <UserIcon className="h-3 w-3" /> {payment.mozoName}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900 dark:text-white">
+                                        {formatCurrency(payment.amount)}
+                                    </td>
+                                </tr>
+                            ))}
+                            {filteredPayments.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                        No se encontraron registros de cobranzas.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const OrdersPage: React.FC = () => {
     const { orders, user, cancelOrder, customers, createOrder, users, updateOrderStatus } = useAppContext();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -915,16 +915,22 @@ export const OrdersPage: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <div className="flex justify-end items-center space-x-2">
-                                                {showPayButton ? (
-                                                    <button onClick={(e) => { e.stopPropagation(); setPayingOrder(order); }} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs flex items-center gap-1">
+                                                {isPaid ? (
+                                                    <span className="font-bold text-green-600 bg-green-100 dark:bg-green-900/30 px-3 py-1 rounded-md text-xs flex items-center gap-1 border border-green-200 dark:border-green-800 cursor-default select-none">
+                                                        <CheckCircle className="h-3 w-3"/> Pagado
+                                                    </span>
+                                                ) : order.estado !== OrderStatus.CANCELADO && (
+                                                    <button onClick={(e) => { e.stopPropagation(); setPayingOrder(order); }} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs flex items-center gap-1 shadow-sm transition-colors">
                                                         <DollarSign className="h-3 w-3"/> Pagar
                                                     </button>
-                                                ) : isEntregado ? (
+                                                )}
+
+                                                {isEntregado ? (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }}
                                                         className="text-gray-600 hover:text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-3 py-1 rounded-md text-xs font-semibold"
                                                     >
-                                                        Ver Ítems
+                                                        Ver
                                                     </button>
                                                 ) : canEdit && canEditOrder ? (
                                                     <button 
@@ -933,7 +939,9 @@ export const OrdersPage: React.FC = () => {
                                                         Editar
                                                     </button>
                                                 ) : (
-                                                    <button onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }} className="text-blue-600 hover:text-blue-900 bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-md text-xs font-semibold">Ver</button>
+                                                    !isEntregado && (
+                                                        <button onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }} className="text-blue-600 hover:text-blue-900 bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-md text-xs font-semibold">Ver</button>
+                                                    )
                                                 )}
                                                 
                                                 {canCancel && isCancellable && (

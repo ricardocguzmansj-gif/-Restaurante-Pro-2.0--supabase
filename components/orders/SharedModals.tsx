@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, formatTimeAgo } from '../../utils';
 import { ORDER_STATUS_COLORS, ORDER_TYPE_ICONS } from '../../constants';
 import { 
     DollarSign, Ban, CreditCard, Banknote, X, Edit, Minus, Plus, 
-    User as UserIcon, AlertTriangle, Bike, QrCode, Trash2, ShoppingBag, Utensils, MapPin
+    User as UserIcon, AlertTriangle, Bike, QrCode, Trash2, ShoppingBag, Utensils, MapPin, CheckCircle, PackageOpen
 } from 'lucide-react';
 
 export const PaymentModal: React.FC<{
@@ -15,7 +15,7 @@ export const PaymentModal: React.FC<{
     onPaymentSuccess: () => void;
 }> = ({ order, onClose, onPaymentSuccess }) => {
     const { addPaymentToOrder, generatePaymentQR, showToast } = useAppContext();
-    const [amount, setAmount] = useState(order.total - (order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0));
+    const [amount, setAmount] = useState<number>(order.total - (order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0));
     const [method, setMethod] = useState<PaymentDetails['method']>('EFECTIVO');
     const [isProcessing, setIsProcessing] = useState(false);
     const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -188,7 +188,9 @@ export const OrderEditorModal: React.FC<{
     }, [users, selectedOrderType]);
 
     const filteredItems = useMemo(() => {
-        let items = processedMenuItems.filter(i => i.disponible && !i.is_deleted);
+        // MODIFICADO: No filtramos por 'disponible' aquí para mostrarlos visualmente desactivados en lugar de ocultarlos
+        let items = processedMenuItems.filter(i => !i.is_deleted);
+        
         if (activeCategory !== 'all') {
              items = items.filter(i => i.category_id === activeCategory);
         }
@@ -199,6 +201,11 @@ export const OrderEditorModal: React.FC<{
     }, [processedMenuItems, activeCategory, searchTerm]);
 
     const handleAddItem = (menuItem: MenuItem) => {
+        if (!menuItem.disponible) {
+            showToast("Producto no disponible o sin stock.", "error");
+            return;
+        }
+
         setLocalItems(prev => {
             const existing = prev.find(i => i.menu_item_id === menuItem.id && !i.notes);
             if (existing) {
@@ -273,7 +280,7 @@ export const OrderEditorModal: React.FC<{
              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[90vh] flex overflow-hidden" onClick={e => e.stopPropagation()}>
                 
                 {/* Left Panel: Menu */}
-                <div className="w-2/3 flex flex-col border-r dark:border-gray-700">
+                <div className="w-2/3 flex flex-col border-r dark:border-gray-700 h-full">
                     <div className="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
                         <input 
                             type="text" 
@@ -289,20 +296,48 @@ export const OrderEditorModal: React.FC<{
                              ))}
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3 content-start bg-gray-100 dark:bg-gray-900">
-                        {filteredItems.map(item => (
-                            <div key={item.id} onClick={() => handleAddItem(item)} className="cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all hover:border-orange-300 group">
-                                <div className="flex justify-between items-start">
-                                    <p className="font-semibold text-sm text-gray-800 dark:text-gray-100 line-clamp-2 mb-1 group-hover:text-orange-600 dark:group-hover:text-orange-400">{item.nombre}</p>
-                                </div>
-                                <p className="text-gray-500 dark:text-gray-400 text-xs font-bold">{formatCurrency(item.precio_base)}</p>
+                    <div className="flex-1 overflow-y-auto p-4 bg-gray-100 dark:bg-gray-900">
+                        {filteredItems.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                                <PackageOpen className="h-12 w-12 mb-2 opacity-50" />
+                                <p>No se encontraron productos.</p>
                             </div>
-                        ))}
+                        ) : (
+                            <div className="grid grid-cols-3 gap-3 content-start">
+                                {filteredItems.map(item => (
+                                    <div 
+                                        key={item.id} 
+                                        onClick={() => handleAddItem(item)} 
+                                        className={`
+                                            cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-sm transition-all 
+                                            group flex flex-col justify-between min-h-[80px]
+                                            ${!item.disponible 
+                                                ? 'opacity-60 grayscale cursor-not-allowed border-dashed bg-gray-50 dark:bg-gray-800/50' 
+                                                : 'hover:shadow-md hover:-translate-y-1 hover:border-orange-300'}
+                                        `}
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <p className={`font-semibold text-sm text-gray-800 dark:text-gray-100 line-clamp-2 mb-1 ${item.disponible ? 'group-hover:text-orange-600 dark:group-hover:text-orange-400' : ''}`}>
+                                                {item.nombre}
+                                            </p>
+                                        </div>
+                                        <div className="flex justify-between items-end mt-2">
+                                            <p className="text-gray-500 dark:text-gray-400 text-xs font-bold">{formatCurrency(item.precio_base)}</p>
+                                            {!item.disponible && (
+                                                <span className="text-[10px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
+                                                    AGOTADO
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Right Panel: Order Details & Config */}
-                <div className="w-1/3 flex flex-col bg-white dark:bg-gray-800">
+                <div className="w-1/3 flex flex-col bg-white dark:bg-gray-800 h-full">
                     <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
                         <h3 className="font-bold text-lg text-gray-900 dark:text-white">Pedido #{order.id}</h3>
                         <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><X className="h-5 w-5 text-gray-500"/></button>
@@ -430,6 +465,8 @@ export const OrderDetailsModal: React.FC<{
     const customer = customers.find(c => c.id === order.customer_id);
     const canEdit = user && [UserRole.ADMIN, UserRole.GERENTE, UserRole.MOZO].includes(user.rol);
     const isEntregado = order.estado === OrderStatus.ENTREGADO;
+    const totalPaid = order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0;
+    const isPaid = totalPaid >= order.total;
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -439,6 +476,11 @@ export const OrderDetailsModal: React.FC<{
                         <h3 className="font-bold text-xl flex items-center gap-2 text-gray-900 dark:text-white">
                             Pedido #{order.id}
                             <span className={`text-xs px-2 py-1 rounded-full text-white ${ORDER_STATUS_COLORS[order.estado]}`}>{order.estado}</span>
+                            {isPaid && (
+                                <span className="ml-2 flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full border border-green-200 dark:border-green-800">
+                                    <CheckCircle className="h-3 w-3" /> PAGADO
+                                </span>
+                            )}
                         </h3>
                         <p className="text-xs text-gray-500">{formatDate(order.creado_en)} - {formatTimeAgo(order.creado_en)}</p>
                     </div>
@@ -515,10 +557,16 @@ export const OrderDetailsModal: React.FC<{
                             Marcar Entregado
                         </button>
                     )}
-                    {(order.estado === OrderStatus.PENDIENTE_PAGO || (order.estado === OrderStatus.ENTREGADO && (order.payments?.reduce((a: number, b: any) => a + (Number(b.amount) || 0), 0) || 0) < order.total)) && (
-                        <button onClick={onPay} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                            <DollarSign className="h-4 w-4" /> Pagar
-                        </button>
+                    {order.estado !== OrderStatus.CANCELADO && (
+                        isPaid ? (
+                            <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg border border-green-200 dark:border-green-800 font-bold flex items-center gap-2 cursor-default">
+                                <CheckCircle className="h-4 w-4" /> PAGADO
+                            </div>
+                        ) : (
+                            <button onClick={onPay} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" /> Pagar
+                            </button>
+                        )
                     )}
                 </div>
             </div>

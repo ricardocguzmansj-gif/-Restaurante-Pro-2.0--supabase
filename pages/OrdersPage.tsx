@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
@@ -66,7 +67,7 @@ const CollectionsHistoryModal: React.FC<{
         }, {} as Record<string, number>);
     }, [filteredPayments]);
 
-    const totalCollected = Object.values(totalsByMethod).reduce((acc, curr) => acc + (curr as number), 0);
+    const totalCollected = (Object.values(totalsByMethod) as number[]).reduce((acc, curr) => acc + curr, 0);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
@@ -88,7 +89,7 @@ const CollectionsHistoryModal: React.FC<{
                         {Object.entries(totalsByMethod).map(([method, amount]) => (
                             <Card key={method} className="p-3 bg-white dark:bg-gray-800">
                                 <p className="text-xs text-gray-500 uppercase">{method}</p>
-                                <p className="text-lg font-semibold text-gray-900 dark:text-white">{formatCurrency(amount)}</p>
+                                <p className="text-lg font-semibold text-gray-900 dark:text-white">{formatCurrency(amount as number)}</p>
                             </Card>
                         ))}
                     </div>
@@ -345,8 +346,8 @@ export const OrdersPage: React.FC = () => {
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedOrders.map(order => {
                                 const customer = customersMap.get(order.customer_id || '');
-                                const isPaid = order.total > 0 && (order.payments?.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0) >= order.total;
-                                const showPayButton = !isPaid && order.estado !== OrderStatus.CANCELADO;
+                                const totalPaid = order.payments?.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0;
+                                const isPaid = totalPaid >= order.total;
                                 
                                 let assignedStaff = null;
                                 if (order.tipo === OrderType.SALA && order.mozo_id) {
@@ -397,16 +398,22 @@ export const OrdersPage: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <div className="flex justify-end items-center space-x-2">
-                                                {showPayButton ? (
-                                                    <button onClick={(e) => { e.stopPropagation(); setPayingOrder(order); }} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs flex items-center gap-1">
+                                                {isPaid ? (
+                                                    <span className="font-bold text-green-600 bg-green-100 dark:bg-green-900/30 px-3 py-1 rounded-md text-xs flex items-center gap-1 border border-green-200 dark:border-green-800 cursor-default select-none">
+                                                        <CheckCircle className="h-3 w-3"/> Pagado
+                                                    </span>
+                                                ) : order.estado !== OrderStatus.CANCELADO && (
+                                                    <button onClick={(e) => { e.stopPropagation(); setPayingOrder(order); }} className="font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md text-xs flex items-center gap-1 shadow-sm transition-colors">
                                                         <DollarSign className="h-3 w-3"/> Pagar
                                                     </button>
-                                                ) : isEntregado ? (
+                                                )}
+
+                                                {isEntregado ? (
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }}
                                                         className="text-gray-600 hover:text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-3 py-1 rounded-md text-xs font-semibold"
                                                     >
-                                                        Ver Ítems
+                                                        Ver
                                                     </button>
                                                 ) : canEdit && canEditOrder ? (
                                                     <button 
@@ -415,7 +422,9 @@ export const OrdersPage: React.FC = () => {
                                                         Editar
                                                     </button>
                                                 ) : (
-                                                    <button onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }} className="text-blue-600 hover:text-blue-900 bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-md text-xs font-semibold">Ver</button>
+                                                    !isEntregado && (
+                                                        <button onClick={(e) => { e.stopPropagation(); setViewingOrder(order); }} className="text-blue-600 hover:text-blue-900 bg-blue-100 dark:bg-blue-900/30 px-3 py-1 rounded-md text-xs font-semibold">Ver</button>
+                                                    )
                                                 )}
                                                 
                                                 {canCancel && isCancellable && (

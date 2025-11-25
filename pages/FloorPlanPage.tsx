@@ -5,7 +5,7 @@ import { useAppContext } from '../contexts/AppContext';
 import { Table, TableStatus, UserRole, OrderType, Sector, User, Order } from '../types';
 import { Card } from '../components/ui/Card';
 import { formatCurrency, formatTimeAgo } from '../utils';
-import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles, Trash2, RotateCcw, LayoutGrid, MousePointer2, Link as LinkIcon, Unlink, Utensils, Receipt, DollarSign, Coffee } from 'lucide-react';
+import { Eye, Pencil, Save, PlusCircle, Repeat, X, ShoppingCart, User as UserIcon, Sparkles, Trash2, RotateCcw, LayoutGrid, MousePointer2, Link as LinkIcon, Unlink, Utensils, Receipt, DollarSign, Coffee, CheckCircle } from 'lucide-react';
 import { PaymentModal, OrderEditorModal } from '../components/orders/SharedModals';
 
 interface DraggableTableProps {
@@ -217,7 +217,41 @@ const TableServiceModal: React.FC<{
     onViewBill: () => void; // Not used in this version but kept for extensibility
 }> = ({ table, order, onClose, onEditOrder, onPay, onRequestBill, onClean }) => {
     
-    if (!order) return null; // Should generally not happen if status is occupied
+    // Si la mesa necesita limpieza, mostrar modal de limpieza prioritario
+    if (table.estado === TableStatus.NECESITA_LIMPIEZA) {
+        return (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="bg-red-500 p-4 text-white flex justify-between items-center">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                            <Sparkles className="h-5 w-5" /> Mesa {table.table_number}
+                        </h3>
+                        <button onClick={onClose}><X className="h-5 w-5 text-white/80 hover:text-white" /></button>
+                    </div>
+                    <div className="p-6 text-center">
+                        <div className="mb-6">
+                            <div className="mx-auto w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-3">
+                                <Sparkles className="h-8 w-8 text-red-500" />
+                            </div>
+                            <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Limpieza Requerida</h4>
+                            <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                La mesa está marcada como sucia. ¿Ya se ha realizado la limpieza y desinfección?
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => { onClean(); onClose(); }}
+                            className="w-full py-3 bg-green-600 text-white rounded-lg font-bold text-lg hover:bg-green-700 flex items-center justify-center gap-2 shadow-md transition-transform active:scale-95"
+                        >
+                            <CheckCircle className="h-6 w-6" />
+                            Mesa Limpia (Liberar)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!order) return null; 
 
     const isPaid = order.total > 0 && (order.payments?.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || 0) >= order.total;
     const status = table.estado;
@@ -352,12 +386,8 @@ export const FloorPlanPage: React.FC = () => {
         // SERVICE MODE LOGIC
         if (table.estado === TableStatus.LIBRE) {
             setOpenTableModal(table);
-        } else if (table.estado === TableStatus.NECESITA_LIMPIEZA) {
-            if (window.confirm(`¿Marcar Mesa ${table.table_number} como limpia y libre?`)) {
-                cleanTable(table.id);
-            }
         } else {
-            // Occupied or Asking Bill
+            // Occupied, Asking Bill OR Needs Cleaning
             setServiceModalTable(table);
         }
     };

@@ -2,39 +2,86 @@
 import { getSupabaseClient } from './supabase';
 import { 
     Order, MenuItem, Customer, Coupon, User, RestaurantSettings, 
-    Table, Ingredient, MenuCategory, OrderStatus, Restaurant, OrderType, Sector 
+    Table, Ingredient, MenuCategory, OrderStatus, Restaurant, OrderType, Sector, UserRole
 } from '../types';
 
 const supabase = getSupabaseClient();
+const isOffline = !supabase;
+
+if (isOffline) {
+    console.warn("⚠️ AVISO: Cliente Supabase no inicializado. Ejecutando en MODO DEMO/OFFLINE. Algunas funciones de backend no estarán disponibles.");
+}
 
 const checkConnection = () => {
-    if (!supabase) throw new Error("Supabase client not initialized. Check credentials.");
+    if (isOffline) throw new Error("Modo Offline: Conexión a base de datos no disponible. Configure las credenciales de Supabase en el archivo .env");
 };
 
 const handleApiError = (error: any, context: string) => {
-    console.error(`API Error in ${context}:`, error);
-    if (error?.message?.includes("Failed to fetch")) {
+    console.error(`API Error in ${context}:`, JSON.stringify(error, null, 2));
+    
+    const message = error?.message || '';
+    if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
         throw new Error("Error de conexión: No se pudo contactar con la base de datos. Verifique su internet o el estado de Supabase.");
     }
+    
     throw error;
 };
 
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
+// --- MOCK DATA FOR OFFLINE MODE ---
+const MOCK_RESTAURANT_ID = 'rest-demo-local';
+const MOCK_USER_ADMIN: User = {
+    id: 'user-super-admin-local',
+    restaurant_id: '',
+    nombre: 'Super Admin (Local)',
+    email: 'admin@restaurante.com',
+    rol: UserRole.SUPER_ADMIN,
+    avatar_url: 'https://ui-avatars.com/api/?name=Super+Admin&background=random',
+    estado_delivery: 'DISPONIBLE',
+    is_deleted: false
+};
+const MOCK_USER_MANAGER: User = {
+    id: 'user-manager-local',
+    restaurant_id: MOCK_RESTAURANT_ID,
+    nombre: 'Gerente Demo',
+    email: 'demo@restaurante.com',
+    rol: UserRole.GERENTE,
+    avatar_url: 'https://ui-avatars.com/api/?name=Gerente+Demo&background=random',
+    estado_delivery: 'DISPONIBLE',
+    is_deleted: false
+};
+
 export const api = {
     getRestaurants: async (): Promise<Restaurant[]> => {
-        checkConnection();
+        if (isOffline) {
+            return [{
+                id: MOCK_RESTAURANT_ID,
+                settings: {
+                    nombre: "Restaurante Demo (Offline)",
+                    logo_url: "",
+                    direccion: "Modo Local 123",
+                    telefono: "000-0000",
+                    horarios: "9am - 10pm",
+                    iva_rate: 21,
+                    precios_con_iva: true,
+                    propina_opciones: [10, 15]
+                }
+            }];
+        }
         try {
             const { data, error } = await supabase!.from('restaurants').select('*');
             if (error) throw error;
             return data || [];
-        } catch (e) { return handleApiError(e, 'getRestaurants'); }
+        } catch (e) { 
+            console.error("Error fetching restaurants:", e);
+            return [];
+        }
     },
 
     getOrders: async (restaurantId: string): Promise<Order[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
-            // Limitamos a los últimos 500 pedidos para no saturar
             const { data, error } = await supabase!.from('orders')
                 .select('*')
                 .eq('restaurant_id', restaurantId)
@@ -46,7 +93,7 @@ export const api = {
     },
 
     getMenuItems: async (restaurantId: string): Promise<MenuItem[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('menu_items').select('*').eq('restaurant_id', restaurantId);
             if (error) throw error;
@@ -55,7 +102,7 @@ export const api = {
     },
 
     getCustomers: async (restaurantId: string): Promise<Customer[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('customers').select('*').eq('restaurant_id', restaurantId).limit(1000);
             if (error) throw error;
@@ -64,7 +111,7 @@ export const api = {
     },
 
     getCoupons: async (restaurantId: string): Promise<Coupon[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('coupons').select('*').eq('restaurant_id', restaurantId);
             if (error) throw error;
@@ -73,7 +120,7 @@ export const api = {
     },
 
     getUsers: async (restaurantId: string): Promise<User[]> => {
-        checkConnection();
+        if (isOffline) return [MOCK_USER_MANAGER];
         try {
             const { data, error } = await supabase!.from('app_users').select('*').eq('restaurant_id', restaurantId);
             if (error) throw error;
@@ -82,7 +129,7 @@ export const api = {
     },
 
     getCategories: async (restaurantId: string): Promise<MenuCategory[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('categories').select('*').eq('restaurant_id', restaurantId).order('orden', { ascending: true });
             if (error) throw error;
@@ -90,14 +137,12 @@ export const api = {
         } catch (e) { return handleApiError(e, 'getCategories'); }
     },
 
-    // --- SECTORES ---
     getSectors: async (restaurantId: string): Promise<Sector[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('sectors').select('*').eq('restaurant_id', restaurantId).order('orden', { ascending: true });
             if (error) {
-                // Si la tabla no existe (error 404/42P01), retornamos array vacío para no romper la app hasta que corran el SQL
-                console.warn("Tabla 'sectors' no encontrada o error. Asegúrate de correr el script SQL de actualización.");
+                console.warn("Tabla 'sectors' no encontrada o error.");
                 return [];
             }
             return data || [];
@@ -127,10 +172,20 @@ export const api = {
             if (error) throw error;
         } catch (e) { return handleApiError(e, 'deleteSector'); }
     },
-    // ----------------
 
     getRestaurantSettings: async (restaurantId: string): Promise<RestaurantSettings | null> => {
-        checkConnection();
+        if (isOffline) {
+             return {
+                nombre: "Restaurante Demo (Offline)",
+                logo_url: "",
+                direccion: "Modo Local 123",
+                telefono: "000-0000",
+                horarios: "9am - 10pm",
+                iva_rate: 21,
+                precios_con_iva: true,
+                propina_opciones: [10, 15]
+            };
+        }
         try {
             const { data, error } = await supabase!.from('restaurants').select('settings').eq('id', restaurantId).single();
             if (error) return null;
@@ -139,7 +194,7 @@ export const api = {
     },
 
     getTables: async (restaurantId: string): Promise<Table[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('tables').select('*').eq('restaurant_id', restaurantId);
             if (error) throw error;
@@ -148,7 +203,7 @@ export const api = {
     },
 
     getIngredients: async (restaurantId: string): Promise<Ingredient[]> => {
-        checkConnection();
+        if (isOffline) return [];
         try {
             const { data, error } = await supabase!.from('ingredients').select('*').eq('restaurant_id', restaurantId);
             if (error) throw error;
@@ -157,7 +212,14 @@ export const api = {
     },
 
     login: async (email: string, password: string): Promise<User | null> => {
-        checkConnection();
+        if (isOffline) {
+            // Mock Login for Demo/Offline Mode
+            if (password === '123456') {
+                if (email === 'admin@restaurante.com') return MOCK_USER_ADMIN;
+                if (email === 'demo@restaurante.com') return MOCK_USER_MANAGER;
+            }
+            return null;
+        }
         try {
             const { data, error } = await supabase!.from('app_users').select('*').eq('email', email).eq('password', password).single();
             if (error || !data) return null;
@@ -166,7 +228,6 @@ export const api = {
     },
 
     recoverPassword: async (email: string): Promise<string> => {
-        checkConnection();
         return "123456-temp";
     },
 
@@ -180,7 +241,7 @@ export const api = {
     },
 
     deductStockForOrder: async (orderId: number): Promise<void> => {
-        checkConnection();
+        if (isOffline) return;
         try {
             const { data: order } = await supabase!.from('orders').select('*').eq('id', orderId).single();
             if(!order) return;
@@ -222,7 +283,6 @@ export const api = {
     createOrder: async (orderData: any): Promise<Order> => {
         checkConnection();
         try {
-            // Clean Order Data
             const payload = {
                 restaurant_id: orderData.restaurant_id,
                 customer_id: orderData.customer_id,
@@ -237,8 +297,8 @@ export const api = {
                 impuestos: orderData.impuestos,
                 propina: orderData.propina,
                 total: orderData.total,
-                items: orderData.items, // JSONB
-                delivery_info: orderData.delivery_info, // JSONB
+                items: orderData.items,
+                delivery_info: orderData.delivery_info,
                 creado_en: new Date().toISOString(),
                 payments: []
             };
@@ -262,7 +322,7 @@ export const api = {
                 nombre: customerData.nombre,
                 telefono: customerData.telefono,
                 email: customerData.email,
-                direccion: customerData.direccion, // JSONB
+                direccion: customerData.direccion,
                 ltv: 0,
                 ultima_compra: new Date().toISOString(),
                 frecuencia_promedio_dias: 0,
@@ -294,7 +354,7 @@ export const api = {
     },
 
     findCustomerByContact: async (restaurantId: string, contact: string): Promise<Customer | undefined> => {
-        checkConnection();
+        if (isOffline) return undefined;
         try {
             const { data } = await supabase!.from('customers')
                 .select('*')
@@ -395,11 +455,9 @@ export const api = {
             
             if (totalPaid >= order.total) {
                 const { data: currentOrder } = await supabase!.from('orders').select('tipo').eq('id', orderId).single();
-                // No cambiar automáticamente a entregado si es delivery, el repartidor lo hace
                 if (currentOrder?.tipo === OrderType.SALA) {
-                    newState = OrderStatus.ENTREGADO; // OJO: En salón, pagar no siempre significa irse inmediatamente, pero cerramos el ciclo económico
+                    newState = OrderStatus.ENTREGADO; 
                 }
-                // Para delivery, el pago completa la transacción pero el estado físico del pedido sigue siendo "En Camino" o "Entregado" según logística
             }
 
             const updatePayload: any = { payments: updatedPayments };
@@ -465,7 +523,7 @@ export const api = {
                 descripcion: itemData.descripcion,
                 precio_base: itemData.precio_base,
                 coste: itemData.coste,
-                receta: itemData.receta, // JSONB
+                receta: itemData.receta,
                 img_url: itemData.img_url,
                 etiquetas: itemData.etiquetas,
                 disponible: itemData.disponible,
@@ -637,7 +695,7 @@ export const api = {
     },
 
     updateUserLocation: async (id: string, lat: number, lng: number): Promise<void> => {
-        checkConnection();
+        if (isOffline) return;
         try {
             await supabase!.from('app_users').update({ 
                 last_location: { lat, lng, updated_at: new Date().toISOString() }
