@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
-import { Download, TrendingUp, Users, Award, X, FileText, Code, Printer, Sparkles, Loader2 } from 'lucide-react';
+import { Download, TrendingUp, Users, Award, X, FileText, Code, Printer, Sparkles, Loader2, List } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
-import { OrderType, OrderStatus, UserRole } from '../types';
-import { formatCurrency } from '../utils';
+import { OrderType, OrderStatus, UserRole, User } from '../types';
+import { formatCurrency, formatDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { analyzeReport } from '../services/ai';
 
@@ -249,6 +249,65 @@ const StaffReportTab: React.FC<{ data: any }> = ({ data }) => {
     );
 };
 
+const SalesDetailTab: React.FC<{ data: any, usersMap: Map<string, User>, customersMap: Map<string, string> }> = ({ data, usersMap, customersMap }) => {
+    if (!data || !data.rawOrders) return null;
+
+    return (
+        <div>
+            <h3 className="text-xl font-semibold mb-4">Detalle de Ventas (Listado)</h3>
+            <div className="overflow-x-auto rounded-lg border dark:border-gray-700">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Fecha/Hora</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Nº Pedido</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Canal</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Responsable</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Cliente</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {data.rawOrders.map((order: any) => {
+                            let responsible = "-";
+                            if (order.tipo === OrderType.SALA && order.mozo_id) {
+                                responsible = usersMap.get(order.mozo_id)?.nombre || 'Desconocido';
+                            } else if (order.tipo === OrderType.DELIVERY && order.repartidor_id) {
+                                responsible = usersMap.get(order.repartidor_id)?.nombre || 'Desconocido';
+                            }
+                            const customerName = order.customer_id ? (customersMap.get(order.customer_id) || 'Cliente') : 'Consumidor Final';
+
+                            return (
+                                <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        {formatDate(order.creado_en)} <span className="text-xs opacity-70">{new Date(order.creado_en).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">#{order.id}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                            order.tipo === OrderType.SALA ? 'bg-blue-100 text-blue-800' :
+                                            order.tipo === OrderType.DELIVERY ? 'bg-purple-100 text-purple-800' :
+                                            'bg-gray-100 text-gray-800'
+                                        }`}>
+                                            {order.tipo}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">{responsible}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">{customerName}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold">{formatCurrency(order.total)}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+            <div className="mt-4 text-right text-sm text-gray-500">
+                Mostrando {data.rawOrders.length} transacciones
+            </div>
+        </div>
+    );
+};
+
 const ExportModal: React.FC<{
     reportData: any;
     onClose: () => void;
@@ -346,7 +405,7 @@ const ExportModal: React.FC<{
 
 
 export const ReportsPage: React.FC = () => {
-    const { orders, categories, processedMenuItems, users } = useAppContext();
+    const { orders, categories, processedMenuItems, users, customers } = useAppContext();
     const [activeTab, setActiveTab] = useState('general');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [filters, setFilters] = useState({
@@ -354,11 +413,13 @@ export const ReportsPage: React.FC = () => {
         dateTo: '',
         channel: 'ALL',
         category: 'ALL',
+        staffId: 'ALL'
     });
     
     const menuItemsMap = useMemo(() => new Map(processedMenuItems.map(item => [item.id, item])), [processedMenuItems]);
     const categoriesMap = useMemo(() => new Map(categories.map(cat => [cat.id, cat.nombre])), [categories]);
     const usersMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+    const customersMap = useMemo(() => new Map(customers.map(c => [c.id, c.nombre])), [customers]);
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -380,6 +441,12 @@ export const ReportsPage: React.FC = () => {
             
             if (filters.channel !== 'ALL' && order.tipo !== filters.channel) return false;
             
+            if (filters.staffId !== 'ALL') {
+                const isMozo = order.mozo_id === filters.staffId;
+                const isRepartidor = order.repartidor_id === filters.staffId;
+                if (!isMozo && !isRepartidor) return false;
+            }
+
             if (filters.category !== 'ALL') {
                 return order.items.some(item => {
                     const menuItem = menuItemsMap.get(item.menu_item_id);
@@ -475,9 +542,10 @@ export const ReportsPage: React.FC = () => {
             totalRevenue, totalOrders, avgOrderValue, salesByCategory, orderTypes,
             topProfitableProducts, topSoldProducts, detailedProductAnalysis,
             salesByHour,
-            staffPerformance
+            staffPerformance,
+            rawOrders: filteredOrders // Pass raw data for detailed lists
         };
-    }, [filters, orders, processedMenuItems, categories, users]);
+    }, [filters, orders, processedMenuItems, categories, users, menuItemsMap, categoriesMap, usersMap]);
     
 
     return (
@@ -491,7 +559,7 @@ export const ReportsPage: React.FC = () => {
             </div>
             
             <Card className="print:hidden">
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                     <div>
                         <label htmlFor="dateFrom" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Desde</label>
                         <input type="date" id="dateFrom" name="dateFrom" value={filters.dateFrom} onChange={handleFilterChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm" />
@@ -507,6 +575,15 @@ export const ReportsPage: React.FC = () => {
                             {Object.values(OrderType).map(type => <option key={type} value={type}>{type}</option>)}
                         </select>
                     </div>
+                    <div>
+                        <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Responsable</label>
+                        <select id="staffId" name="staffId" value={filters.staffId} onChange={handleFilterChange} className="mt-1 block w-full pl-3 pr-10 py-2 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                            <option value="ALL">Todo el Personal</option>
+                            {users.filter(u => u.rol === UserRole.MOZO || u.rol === UserRole.REPARTO).map(u => (
+                                <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                            ))}
+                        </select>
+                    </div>
                      <div>
                         <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Categoría</label>
                         <select id="category" name="category" value={filters.category} onChange={handleFilterChange} className="mt-1 block w-full pl-3 pr-10 py-2 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
@@ -519,8 +596,9 @@ export const ReportsPage: React.FC = () => {
 
             <Card>
                  <div className="border-b border-gray-200 dark:border-gray-700 print:hidden">
-                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                    <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                         <TabButton active={activeTab === 'general'} onClick={() => setActiveTab('general')}>General</TabButton>
+                        <TabButton active={activeTab === 'ventas'} onClick={() => setActiveTab('ventas')}><span className="flex items-center gap-1"><List className="h-4 w-4"/> Detalle Ventas</span></TabButton>
                         <TabButton active={activeTab === 'productos'} onClick={() => setActiveTab('productos')}>Productos</TabButton>
                         <TabButton active={activeTab === 'horas'} onClick={() => setActiveTab('horas')}>Ventas por Hora</TabButton>
                         <TabButton active={activeTab === 'personal'} onClick={() => setActiveTab('personal')}>Personal</TabButton>
@@ -535,6 +613,7 @@ export const ReportsPage: React.FC = () => {
                     ) : (
                         <>
                             {activeTab === 'general' && <GeneralReportTab data={reportData} />}
+                            {activeTab === 'ventas' && <SalesDetailTab data={reportData} usersMap={usersMap} customersMap={customersMap} />}
                             {activeTab === 'productos' && <ProductsReportTab data={reportData} />}
                             {activeTab === 'horas' && <HourlySalesTab data={reportData} />}
                             {activeTab === 'personal' && <StaffReportTab data={reportData} />}
